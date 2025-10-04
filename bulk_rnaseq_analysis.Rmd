@@ -1,0 +1,3569 @@
+
+---
+title: "🧬 Bulk RNA-sequencing Pipeline and Differential Gene Expression Analysis 📊"
+author: "👨‍🔬 Hongchen Xiao"
+date: "📅 `r format(Sys.Date(), '%B %d, %Y')`"
+bibliography: Bioinformatics.bib
+output: 
+  html_document:
+    toc: true
+    toc_float: 
+      collapsed: true
+      smooth_scroll: true
+    toc_depth: 3
+    number_sections: true
+    code_folding: show
+    theme: cosmo
+    highlight: tango
+    df_print: paged
+    fig_caption: true
+    self_contained: true
+---
+
+
+```{r setup, include=FALSE}
+
+# Set global chunk options
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  error = FALSE,
+  comment = "#>",
+  fig.align = "center",
+  out.width = "80%",
+  dpi = 300,
+  cache = FALSE,
+  fig.width = 10,
+  fig.height = 7,
+  dev = "png",
+  dev.args = list(bg = "transparent"),
+  fig.retina = 2,
+  fig.showtext = TRUE,
+  results = "hold"
+)
+
+# Set general options
+options(
+  digits = 3,
+  width = 120,
+  scipen = 999,
+  knitr.kable.NA = "",
+  knitr.table.format = "html"
+)
+
+# Load required packages silently
+suppressPackageStartupMessages({
+  library(knitr)
+  library(kableExtra)
+  library(htmltools)
+})
+```
+
+```{r klippy, echo=FALSE, include=TRUE}
+    klippy::klippy(position = c('bottom', 'right'),
+                   lang = c('r', 'python', 'bash'),
+                   tooltip_message = 'Click to copy', 
+                   tooltip_success = 'Copied!',
+                   color = 'darkRed')
+```
+
+
+```{css, echo=FALSE}
+
+/* Enhanced Custom CSS styling */
+body {
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  line-height: 1.8;
+  color: #2c3e50;
+  max-width: 1200px;
+  margin: auto;
+  padding: 1em;
+  background-color: #ffffff;
+}
+
+h1, h2, h3, h4 {
+  color: #2c3e50;
+  font-weight: 600;
+  margin-top: 2em;
+  border-bottom: 2px solid #eaecef;
+  padding-bottom: 0.3em;
+}
+
+.title {
+  color: #2c3e50;
+  text-align: center;
+  font-size: 2.8em;
+  margin-bottom: 1em;
+  font-weight: 700;
+  border-bottom: none;
+}
+
+.author, .date {
+  text-align: center;
+  color: #7f8c8d;
+  font-size: 1.2em;
+  margin-bottom: 2em;
+}
+
+/* Code chunks styling */
+pre {
+  border-radius: 4px;
+  background-color: #f8f9fa !important;
+  border: 1px solid #e9ecef;
+  padding: 1em;
+}
+
+code {
+  color: #c0392b;
+  background-color: #f8f9fa;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+
+pre.r:before {
+  content: "R Script";
+  display: block; /* Make the label appear on its own line */
+  font-weight: bold;
+  color: #555;
+  background-color: #eee;
+  padding: 5px
+}
+
+pre.python:before {
+  content: "Python Script";
+  display: block; /* Make the label appear on its own line */
+  font-weight: bold;
+  color: #555;
+  background-color: #eee;
+  padding: 5px
+}
+
+pre.bash:before {
+  content: "bash Script";
+  display: block; /* Make the label appear on its own line */
+  font-weight: bold;
+  color: #555;
+  background-color: #eee;
+  padding: 5px
+}
+
+
+
+
+/* Table of contents styling */
+#TOC {
+  padding: 20px;
+  background-color: #f8f9fa;
+  border-radius: 5px;
+  border: 1px solid #e9ecef;
+}
+
+.toc-content {
+  padding-left: 1em;
+  padding-right: 1em;
+}
+
+/* Figure styling */
+.figure {
+  margin: 2em 0;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.caption {
+  margin-top: 0.5em;
+  color: #666;
+  font-style: italic;
+}
+
+/* Tables styling */
+table {
+  width: 100%;
+  margin-bottom: 1em;
+  border-collapse: collapse;
+  border-spacing: 0;
+}
+
+thead {
+  background-color: #f8f9fa;
+}
+
+th, td {
+  padding: 8px;
+  border: 1px solid #dee2e6;
+}
+
+/* Button styling */
+.btn-code-chunk {
+  background-color: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 0.9em;
+  color: #666;
+}
+
+/* Links styling */
+a {
+  color: #0366d6;
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* Blockquote styling */
+blockquote {
+  margin: 1em 0;
+  padding-left: 1em;
+  border-left: 4px solid #e9ecef;
+  color: #6c757d;
+}
+```
+
+
+# 📦 Required Packages
+
+```{r package_setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+# Core data analysis
+packages <- c(
+  # Core RNA-seq analysis
+  "DESeq2",      # Differential expression analysis
+  "edgeR",       # RNA-seq analysis tools
+  "limma",       # Linear models for microarray/RNA-seq data
+  
+  # Data manipulation
+  "tidyverse",   # Data manipulation and visualization
+  "data.table",  # Fast data manipulation
+  "Matrix",      # Sparse and dense matrix operations
+  
+  # Visualization
+  "ggplot2",     # Publication quality graphics
+  "pheatmap",    # Pretty heatmaps
+  "ComplexHeatmap", # Advanced heatmaps
+  "ggrepel",     # Text and label repulsion for ggplot2
+  "RColorBrewer",# Color palettes
+  "gridExtra",   # Arranging multiple plots
+  
+  # Enrichment analysis
+  "fgsea",       # Fast gene set enrichment analysis
+  "clusterProfiler", # Enrichment analysis and visualization
+  "enrichplot",  # Visualization of enrichment results
+  "pathview",    # Pathway visualization
+  
+  # Annotation
+  "org.Hs.eg.db", # Human genome annotation
+  "biomaRt",     # Access to biomart databases
+  
+  # Utility
+  "here",        # File path management
+  "janitor",     # Data cleaning
+  "scales",      # Scale functions for visualization
+  "cowplot"      # Plot composition
+)
+
+# Install missing packages
+missing_packages <- setdiff(packages, rownames(installed.packages()))
+if (length(missing_packages) > 0) {
+  if (!requireNamespace("BiocManager", quietly = TRUE)) {
+    install.packages("BiocManager")
+  }
+  BiocManager::install(missing_packages)
+}
+
+# Load all packages
+invisible(lapply(packages, library, character.only = TRUE))
+
+# Custom theme for consistent plotting
+theme_publication <- function(base_size = 14) {
+  theme_minimal(base_size = base_size) +
+    theme(
+      panel.border = element_rect(colour = "black", fill = NA, size = 0.5),
+      panel.grid.major = element_line(size = 0.2, color = "grey"),
+      panel.grid.minor = element_blank(),
+      axis.text = element_text(size = base_size * 0.8),
+      axis.title = element_text(size = base_size),
+      legend.title = element_text(size = base_size),
+      legend.text = element_text(size = base_size * 0.8),
+      plot.title = element_text(size = base_size * 1.2, hjust = 0.5),
+      plot.subtitle = element_text(size = base_size, hjust = 0.5),
+      complete = TRUE
+    )
+}
+
+# Set default ggplot theme
+theme_set(theme_publication())
+
+# Create results directory if it doesn't exist
+dir.create("results", showWarnings = FALSE)
+dir.create("figures", showWarnings = FALSE)
+dir.create("images", showWarnings = FALSE)
+```
+
+
+
+This analysis requires several R packages for different aspects of RNA-seq data analysis:
+
+- **Core Analysis:**
+  - `DESeq2`: Differential expression analysis
+  - `tidyverse`: Data manipulation and visualization
+  - `ggplot2`: Advanced plotting
+  
+- **Visualization:**
+  - `EnhancedVolcano`: Enhanced volcano plots
+  - `pheatmap`: Pretty heatmaps
+  - `RColorBrewer`: Color palettes
+  - `Rtsne`: t-SNE dimensionality reduction
+  
+- **Functional Analysis:**
+  - `clusterProfiler`: Gene set enrichment analysis
+  - `DOSE`: Disease ontology
+  - `enrichplot`: Enrichment visualization
+  - `org.Hs.eg.db`: Human genome annotations
+  - `pathview`: Pathway visualization
+
+```{r load_libraries}
+# Core analysis packages
+suppressPackageStartupMessages({
+  library(DESeq2)
+  library(ggplot2)
+  library(tidyverse)
+  
+  # Visualization packages
+  library(EnhancedVolcano)
+  library(ggupset)
+  library(pheatmap)
+  library(RColorBrewer)
+  library(Rtsne)
+  
+  # Functional analysis packages
+  library(clusterProfiler)
+  library(DOSE)
+  library(enrichplot)
+  library(org.Hs.eg.db)
+  library(pathview)
+  
+  # Additional utilities
+  library(biomaRt)
+  library(cowplot)
+  library(data.table)
+  library(ggrepel)
+  library(here)
+  library(janitor)
+  library(kableExtra)
+  library(knitr)
+  library(Matrix)
+  library(pdftools)
+  library(readr)
+  library(scales)
+  library(showtext)
+  library(tibble)
+  library(viridis)
+})
+```
+
+
+# 📊 Analysis Overview
+
+This RMarkdown document contains a comprehensive analysis of RNA-sequencing data comparing hypoxic and normoxic conditions in LNCaP and PC3 prostate cancer cell lines[@RN8]. The analysis includes:
+
+1. 🔍 Quality control and data preprocessing
+2. 📈 Differential expression analysis
+3. 📊 Visualization of results
+4. 🛣️ Pathway and functional enrichment analysis
+5. 🔄 Comparative analysis between cell lines
+
+::: {.analysis-overview style="background-color: #e8f5e9; padding: 15px; border-radius: 5px; margin: 15px 0;"}
+**🎯 Analysis Goals:**
+
+1. ** Primary Objectives**
+   - Identify hypoxia-responsive genes
+   - Compare cell line-specific responses
+   - Discover potential therapeutic targets
+
+2. **Technical Approach**
+   - Robust statistical analysis
+   - Comprehensive visualization
+   - Pathway-level interpretation
+
+3. **Expected Outcomes**
+   - Gene expression signatures
+   - Pathway enrichment profiles
+   - Cell line comparison insights
+:::
+
+
+This comprehensive RNA-seq analysis pipeline is structured in three main stages[@RN12]:
+
+## ↗️ Upstream Analysis
+-  Quality control of FASTQ files (pre/post-trimming)
+-  Read trimming
+-  Genome alignment
+-  Gene expression quantification
+
+## ➡️ Midstream Analysis
+- Count normalization
+- Exploratory data analysis
+  - Box plots
+  - Principal Component Analysis (PCA)
+  - t-SNE visualization
+  - Sample distance heatmap
+- Differential expression analysis
+  - MA plots
+  - Volcano plots
+  - Gene expression heatmaps
+
+## ⬇️Downstream Analysis
+- Functional enrichment analysis
+  - KEGG pathway analysis
+  - Gene Ontology (GO) enrichment
+  - Pathway visualization
+
+<div class="figure" style="text-align: center">
+<img src="images/RNAseq_workflow.svg" alt="Workflow of RNA-seq data analysis" width="80%" />
+<p class="caption">**Figure 1:** Complete workflow of RNA-seq data analysis pipeline</p>
+</div>
+
+
+
+# 🔬 Upstream Data Processing
+
+## 📋 Project Overview {.tabset}
+
+### 🔄 Pipeline Description
+
+This comprehensive pipeline demonstrates end-to-end RNA-seq analysis, taking you from raw sequencing data to biological insights. The analysis workflow includes:
+
+- Raw data retrieval from GEO/SRA databases
+- Read processing using nf-core/rnaseq pipeline
+- Differential expression analysis with DESeq2
+- Advanced visualization and enrichment analysis
+
+::: {.note}
+**Note:** If you are working with your own RNA-seq experiment data obtained directly from a sequencing facility, you can skip to the section on [Mapping reads using nf-core/rnaseq].
+:::
+
+### 📊 Dataset Description
+
+We analyze RNA-seq data from a study published in Nature Communications:
+
+<div class="publication-box" style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 15px 0;">
+📚 **Reference Publication:** <br>
+[Guo et al. Nature Communications 2019](https://www.ncbi.nlm.nih.gov/pubmed/30655535)
+
+**Focus:** Hypoxia response in prostate cancer cell lines
+</div>
+
+#### 🧪 Experimental Design
+
+The study examines two prostate cancer cell lines under different oxygen conditions:
+
+1. **LNCaP cells**
+   - Empty vector control in normoxia
+   - Empty vector control in hypoxia
+
+2. **PC3 cells**
+   - siControl in normoxia
+   - siControl in hypoxia
+
+### 🧬 Sample Information
+
+<div class="table-responsive">
+<table class="table table-striped table-hover">
+  <thead class="thead-dark">
+    <tr>
+      <th>Sample Name</th>
+      <th>GSM ID</th>
+      <th>SRX ID</th>
+      <th>SRR IDs</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>LNCaP_Empty_Normoxia_rep1</td>
+      <td>GSM3145509</td>
+      <td>SRX4096735</td>
+      <td>SRR7179504-7</td>
+    </tr>
+    <tr>
+      <td>LNCaP_Empty_Normoxia_rep2</td>
+      <td>GSM3145510</td>
+      <td>SRX4096736</td>
+      <td>SRR7179508-11</td>
+    </tr>
+    <tr>
+      <td>LNCaP_Empty_Hypoxia_rep1</td>
+      <td>GSM3145513</td>
+      <td>SRX4096739</td>
+      <td>SRR7179520-3</td>
+    </tr>
+    <tr>
+      <td>LNCaP_Empty_Hypoxia_rep2</td>
+      <td>GSM3145514</td>
+      <td>SRX4096740</td>
+      <td>SRR7179524-7</td>
+    </tr>
+    <tr>
+      <td>PC3_siCtrl_Normoxia_rep1</td>
+      <td>GSM3145517</td>
+      <td>SRX4096743</td>
+      <td>SRR7179536</td>
+    </tr>
+    <tr>
+      <td>PC3_siCtrl_Normoxia_rep2</td>
+      <td>GSM3145518</td>
+      <td>SRX4096744</td>
+      <td>SRR7179537</td>
+    </tr>
+    <tr>
+      <td>PC3_siCtrl_Hypoxia_rep1</td>
+      <td>GSM3145521</td>
+      <td>SRX4096747</td>
+      <td>SRR7179540</td>
+    </tr>
+    <tr>
+      <td>PC3_siCtrl_Hypoxia_rep2</td>
+      <td>GSM3145522</td>
+      <td>SRX4096748</td>
+      <td>SRR7179541</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+
+## 📥 Data Download and Preparation
+
+### 🛠️ Setting Up SRA Toolkit
+
+To download the sequencing data, we'll use the NCBI's SRA toolkit, a powerful suite of tools for accessing sequencing data from the Sequence Read Archive.
+
+::: {.info-box style="background-color: #e3f2fd; padding: 15px; border-radius: 5px; margin: 15px 0;"}
+**Installation Note:** 
+- On Linux systems: `sudo apt install sra-toolkit`
+- For other systems: Visit the [SRA Toolkit documentation](https://www.ncbi.nlm.nih.gov/books/NBK242621/)
+:::
+
+### 📝 Sample List Preparation
+
+Create a file named `list.txt` containing the SRA run accessions:
+
+```{bash sample-list, eval=FALSE}
+cat << EOF > list.txt
+SRR7179504 SRR7179505 SRR7179506 SRR7179507 SRR7179508 SRR7179509 SRR7179510 SRR7179511 SRR7179520 
+SRR7179521 SRR7179522 SRR7179523 SRR7179524 SRR7179525 SRR7179526 SRR7179527 SRR7179536 SRR7179537 
+SRR7179540 SRR7179541 
+EOF
+```
+
+### 💻 Computing Environment
+
+<div class="environment-box" style="background-color: #f1f8e9; padding: 15px; border-radius: 5px; margin: 15px 0;">
+**🖥️ Human Genetics Computing Cluster (HGCC)**
+
+- **Architecture:**
+  - 1 head/login node
+  - 14 compute nodes
+  - 1 data transfer node (DTN)
+
+- **Capabilities:**
+  - NGS analysis pipelines
+  - High-performance computing
+  - Parallel computing
+  - Web application serving
+  - Data storage
+</div>
+
+We will utilize the HGCC's computational resources for downloading and processing the SRA files into FASTQ format.
+
+### 📥 Download SRA Files
+
+First, we'll download the SRA files using the SRA toolkit:
+
+```{bash SRA-download, eval=FALSE}
+# Load SRA tools module
+spack load sratools
+
+# Download each SRA file
+for i in $(cat list.txt); do
+    echo "Processing $i at $(date)"
+    fastq-dump \
+        --gzip \
+        --skip-technical \
+        --readids \
+        --read-filter pass \
+        --dumpbase \
+        --split-3 \
+        --clip \
+        --outdir rawData/ \
+        $i
+done
+```
+
+### 🔄 FASTQ File Processing
+
+The downloaded data requires some processing before analysis. We'll handle the LNCaP and PC3 samples differently due to their sequencing structure.
+
+#### 🧪 LNCaP Sample Processing
+
+LNCaP samples have multiple sequencing runs that need to be concatenated:
+
+```{bash sample-processing-1, eval=FALSE}
+# Process LNCaP Normoxia samples
+echo "Processing LNCaP Normoxia samples..."
+cat SRR7179504_pass.fastq.gz SRR7179505_pass.fastq.gz \
+    SRR7179506_pass.fastq.gz SRR7179507_pass.fastq.gz \
+    > LNCAP_Normoxia_S1.fastq.gz
+
+cat SRR7179508_pass.fastq.gz SRR7179509_pass.fastq.gz \
+    SRR7179510_pass.fastq.gz SRR7179511_pass.fastq.gz \
+    > LNCAP_Normoxia_S2.fastq.gz
+
+# Process LNCaP Hypoxia samples
+echo "Processing LNCaP Hypoxia samples..."
+cat SRR7179520_pass.fastq.gz SRR7179521_pass.fastq.gz \
+    SRR7179522_pass.fastq.gz SRR7179523_pass.fastq.gz \
+    > LNCAP_Hypoxia_S1.fastq.gz
+
+cat SRR7179524_pass.fastq.gz SRR7179525_pass.fastq.gz \
+    SRR7179526_pass.fastq.gz SRR7179527_pass.fastq.gz \
+    > LNCAP_Hypoxia_S2.fastq.gz
+```
+
+#### PC3 Sample Processing
+
+PC3 samples were sequenced in single runs, so we'll simply rename them:
+
+```{bash sample-processing-2, eval=FALSE}
+# Rename PC3 files
+echo "Processing PC3 samples..."
+mv SRR7179536_pass.fastq.gz PC3_Normoxia_S1.fastq.gz
+mv SRR7179537_pass.fastq.gz PC3_Normoxia_S2.fastq.gz
+mv SRR7179540_pass.fastq.gz PC3_Hypoxia_S1.fastq.gz
+mv SRR7179541_pass.fastq.gz PC3_Hypoxia_S2.fastq.gz
+```
+
+#### 🧹 Cleanup
+
+Remove intermediate files to free up space:
+
+```{bash cleanup, eval=FALSE}
+# Remove individual SRA run files
+echo "Cleaning up intermediate files..."
+rm SRR*
+```
+
+::: {.success-box style="background-color: #e8f5e9; padding: 15px; border-radius: 5px; margin: 15px 0;"}
+**✓ Completion Check:**
+After processing, you should have 8 FASTQ files in your directory:
+- 4 LNCaP files (2 Normoxia, 2 Hypoxia)
+- 4 PC3 files (2 Normoxia, 2 Hypoxia)
+
+These files are now ready for alignment to the reference genome!
+:::
+
+
+
+## 🧬 Read Mapping with nf-core/rnaseq
+
+### 🔄 Pipeline Overview
+
+The nf-core/rnaseq pipeline provides a robust and standardized approach for RNA sequencing analysis[@RN13]. It encompasses all necessary steps from raw FASTQ files to gene expression quantification.
+
+<div class="figure" style="text-align: center">
+<img src="images/nf-core-rnaseq_metro_map_grey_animated.svg" alt="nf-core-rnaseq" width="80%" />
+<p class="caption">**Figure 2:** NF-core/RNAseq workflow</p>
+</div>
+
+
+### 📋 Sample Sheet Preparation
+
+The pipeline requires a carefully formatted sample sheet that specifies the input files and their characteristics.
+
+::: {.important-box style="background-color: #fff3e0; padding: 15px; border-radius: 5px; margin: 15px 0;"}
+**Key Requirements:**
+1️⃣ The first 4 columns must follow a specific format
+2️⃣ Auto-detection of single-end vs paired-end data
+3️⃣ Flexible additional columns for metadata
+:::
+
+#### Sample Sheet Format
+
+The sample sheet should be a CSV file with the following columns:sample,fastq_1,fastq_2,strandedness.
+```{r sample_sheet}
+
+# Read your data
+my_data <- read_csv("rawData/sample_sheet.csv")
+```
+
+```{r display_sample_sheet, echo=FALSE, results='asis'}
+# Create a beautiful table
+my_data %>%
+  kable(
+    caption = "Sample Sheet for nf-core/rnaseq Pipeline",
+    booktabs = TRUE # Creates a nicer-looking table for PDF output
+  ) %>%
+  kable_styling(
+    bootstrap_options = "striped", # Adds alternating row colors (for HTML)
+    full_width = FALSE
+  ) %>%
+  row_spec(nrow(my_data), extra_css = "border-bottom: 1px solid")
+  
+```
+
+
+### 🧬 Reference Genome Preparation
+
+The pipeline requires two key reference files:
+1. FASTA file (genome sequence)
+2. GTF file (genome annotation)
+
+#### 📥 Download Reference Files
+
+We'll download the latest human reference genome from Ensembl:
+
+```{bash download-references, eval=FALSE}
+# Get latest Ensembl release number
+latest_release=$(curl -s 'http://rest.ensembl.org/info/software?content-type=application/json' | \
+                grep -o '"release":[0-9]*' | cut -d: -f2)
+
+# Download genome sequence
+wget -L ftp://ftp.ensembl.org/pub/release-${latest_release}/fasta/homo_sapiens/dna/\
+            Homo_sapiens.GRCh38.dna_sm.primary_assembly.fa.gz
+
+# Download genome annotation
+wget -L ftp://ftp.ensembl.org/pub/release-${latest_release}/gtf/homo_sapiens/\
+            Homo_sapiens.GRCh38.${latest_release}.gtf.gz
+```
+
+::: {.tip-box style="background-color: #e1f5fe; padding: 15px; border-radius: 5px; margin: 15px 0;"}
+**💡 Tip:** Always use the latest release of reference files for the most up-to-date genome annotations.
+:::
+
+### 🚀 Pipeline Execution
+
+Create a SLURM job script (`run_nextflow.sh`) to execute the pipeline:
+
+```{bash run-nextflow, eval=FALSE}
+#!/bin/bash
+
+#SBATCH --job-name=Bulk_RNAseq            # Job name
+#SBATCH --nodes=1                         # Run on a single node
+#SBATCH --ntasks=32                       # Number of tasks (cores)
+#SBATCH --mem=256gb                       # Memory requirement
+#SBATCH --time=24:00:00                  # Time limit (24 hours)
+#SBATCH --output=./SLURM_OUT/%x_%A.out   # Output file
+#SBATCH --error=./SLURM_OUT/%x_%A.err    # Error file
+
+# Print job info
+echo "Starting job at: $(date)"
+echo "Running on node: $(hostname)"
+echo "Working directory: $(pwd)"
+echo "Using ${SLURM_CPUS_ON_NODE} CPU cores"
+
+# Run nf-core/rnaseq pipeline
+nextflow run nf-core/rnaseq -r 3.16.0 \
+    -profile apptainer \
+    --input rawData/sample_sheet.csv \
+    --outdir results \
+    --fasta references/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz \
+    --gtf references/Homo_sapiens.GRCh38.99.gtf.gz \
+    --aligner star_salmon
+```
+
+::: {.parameters-box style="background-color: #f3e5f5; padding: 15px; border-radius: 5px; margin: 15px 0;"}
+**Pipeline Parameters:**
+- `-r 3.16.0`: Pipeline version
+- `-profile apptainer`: Container profile
+- `--input`: Sample sheet location
+- `--outdir`: Output directory
+- `--fasta`: Reference genome sequence
+- `--gtf`: Reference genome annotation
+- `--aligner`: STAR with Salmon quantification
+:::
+
+#### 🏃 Execute the Pipeline
+
+Submit the job to SLURM:
+
+```{bash, eval=FALSE}
+# Submit the job
+sbatch run_nextflow.sh
+```
+
+
+<details> <summary>The output from successfully running the command looks like this: </summary>
+
+``` { .output}        
+executor >  local (288)
+[4d/e88d76] NFC…na.primary_assembly.fa.gz) | 1 of 1 ✔
+[f3/04cb10] NFC…_sapiens.GRCh38.99.gtf.gz) | 1 of 1 ✔
+[97/0a1dac] NFC…8.dna.primary_assembly.fa) | 1 of 1 ✔
+[ec/1f96a8] NFC…ary_assembly.filtered.gtf) | 1 of 1 ✔
+[c8/4075f2] NFC…8.dna.primary_assembly.fa) | 1 of 1 ✔
+[b1/2eebb8] NFC…8.dna.primary_assembly.fa) | 1 of 1 ✔
+[6b/7aca1c] NFC…8.dna.primary_assembly.fa) | 1 of 1 ✔
+[-        ] NFC…_SETSTRANDEDNESS:CAT_FASTQ -
+[37/51a998] NFC…E:FASTQC (PC3_Normoxia_S2) | 8 of 8 ✔
+[89/2db109] NFC…RIMGALORE (PC3_Hypoxia_S2) | 8 of 8 ✔
+[2a/6f0f4a] NFC…EX (genome.transcripts.fa) | 1 of 1 ✔
+[1b/69a515] NFC…SAMPLE (LNCAP_Normoxia_S2) | 8 of 8 ✔
+[de/1db031] NFC…_QUANT (LNCAP_Normoxia_S1) | 8 of 8 ✔
+[50/531a76] NFC…_ALIGN (LNCAP_Normoxia_S1) | 8 of 8 ✔
+[46/33ae9a] NFC…S_SORT (LNCAP_Normoxia_S1) | 8 of 8 ✔
+[c7/5e2724] NFC…_INDEX (LNCAP_Normoxia_S1) | 8 of 8 ✔
+[4c/d2378a] NFC…_STATS (LNCAP_Normoxia_S1) | 8 of 8 ✔
+[cc/75a2cd] NFC…FLAGSTAT (PC3_Normoxia_S1) | 8 of 8 ✔
+[fa/09e140] NFC…DXSTATS (LNCAP_Hypoxia_S2) | 8 of 8 ✔
+[60/948088] NFC…_QUANT (LNCAP_Normoxia_S1) | 8 of 8 ✔
+[26/d9c087] NFC…LMON:CUSTOM_TX2GENE (null) | 1 of 1 ✔
+[3d/2c8362] NFC…AR_SALMON:TXIMETA_TXIMPORT | 1 of 1 ✔
+[0a/e83622] NFC…LMON:SE_GENE (all_samples) | 1 of 1 ✔
+[cf/5dbd84] NFC…ENGTH_SCALED (all_samples) | 1 of 1 ✔
+[64/67bd55] NFC…_GENE_SCALED (all_samples) | 1 of 1 ✔
+[18/566451] NFC…E_TRANSCRIPT (all_samples) | 1 of 1 ✔
+[fe/0cfd95] NFC…ASEQ:DESEQ2_QC_STAR_SALMON | 1 of 1 ✔
+[28/ca3860] NFC…ICATES (LNCAP_Normoxia_S1) | 8 of 8 ✔
+[60/c7e69b] NFC…_INDEX (LNCAP_Normoxia_S1) | 8 of 8 ✔
+[82/03ce63] NFC…OLS_STATS (PC3_Hypoxia_S1) | 8 of 8 ✔
+[ee/c48141] NFC…FLAGSTAT (PC3_Normoxia_S1) | 8 of 8 ✔
+[18/d3254b] NFC…_IDXSTATS (PC3_Hypoxia_S1) | 8 of 8 ✔
+[2b/777e77] NFC…INGTIE (LNCAP_Normoxia_S1) | 8 of 8 ✔
+[35/91ff22] NFC…COUNTS (LNCAP_Normoxia_S1) | 8 of 8 ✔
+[f7/4a9a08] NFC…IOTYPE (LNCAP_Normoxia_S1) | 8 of 8 ✔
+[d8/563ed2] NFC…COV_FW (LNCAP_Normoxia_S1) | 8 of 8 ✔
+[f1/0c38f3] NFC…OV_REV (LNCAP_Normoxia_S1) | 8 of 8 ✔
+[f4/ca548d] NFC…EDCLIP (LNCAP_Normoxia_S1) | 8 of 8 ✔
+[a6/a43b1a] NFC…BIGWIG (LNCAP_Normoxia_S1) | 8 of 8 ✔
+[81/0c3b16] NFC…EDCLIP (LNCAP_Normoxia_S1) | 8 of 8 ✔
+[cd/2fa162] NFC…BIGWIG (LNCAP_Normoxia_S1) | 8 of 8 ✔
+[4a/005a31] NFC…RNASEQ (LNCAP_Normoxia_S1) | 8 of 8 ✔
+[48/1ba811] NFC…PRADAR (LNCAP_Normoxia_S1) | 8 of 8 ✔
+[db/e887db] NFC…AMSTAT (LNCAP_Normoxia_S1) | 8 of 8 ✔
+[dc/943607] NFC…STANCE (LNCAP_Normoxia_S1) | 8 of 8 ✔
+[81/a0ba9f] NFC…RIMENT (LNCAP_Normoxia_S1) | 8 of 8 ✔
+[45/944d35] NFC…TATION (LNCAP_Normoxia_S1) | 8 of 8 ✔
+[c6/32ba39] NFC…RATION (LNCAP_Normoxia_S1) | 8 of 8 ✔
+[69/38729b] NFC…BUTION (LNCAP_Normoxia_S1) | 8 of 8 ✔
+[6d/91dec1] NFC…CATION (LNCAP_Normoxia_S1) | 8 of 8 ✔
+[6c/b8daaf] NFC…_RNASEQ:RNASEQ:MULTIQC (1) | 1 of 1 ✔
+-[nf-core/rnaseq] Pipeline completed successfully -
+Completed at: 30-May-2025 22:26:13
+Duration    : 2h 50m 30s
+CPU hours   : 63.9
+Succeeded   : 288
+```
+
+</details>
+
+After the script has finished running, the output folders containing the alignment files for each sample should be found in the directory `star_salmon/`.
+
+### 📊 Understanding the output
+
+<details> <summary>🗂️ In the `star_salmon/` directory, we will find a separate folder of results for each of the FASTQ files you mapped. Inside this folder, you should see the following files:</summary>
+
+``` { .output}        
+.
+├── bigwig/
+│   ├── LNCAP_Hypoxia_S1.forward.bigWig
+│   ├── LNCAP_Hypoxia_S1.reverse.bigWig
+│   ├── LNCAP_Hypoxia_S2.forward.bigWig
+│   ├── LNCAP_Hypoxia_S2.reverse.bigWig
+│   ├── LNCAP_Normoxia_S1.forward.bigWig
+│   ├── LNCAP_Normoxia_S1.reverse.bigWig
+│   ├── LNCAP_Normoxia_S2.forward.bigWig
+│   ├── LNCAP_Normoxia_S2.reverse.bigWig
+│   ├── PC3_Hypoxia_S1.forward.bigWig
+│   ├── PC3_Hypoxia_S1.reverse.bigWig
+│   ├── PC3_Hypoxia_S2.forward.bigWig
+│   ├── PC3_Hypoxia_S2.reverse.bigWig
+│   ├── PC3_Normoxia_S1.forward.bigWig
+│   ├── PC3_Normoxia_S1.reverse.bigWig
+│   ├── PC3_Normoxia_S2.forward.bigWig
+│   └── PC3_Normoxia_S2.reverse.bigWig
+├── deseq2_qc/
+│   ├── size_factors/
+│   ├── deseq2.dds.RData
+│   ├── deseq2.pca.vals.txt
+│   ├── deseq2.plots.pdf
+│   ├── deseq2.sample.dists.txt
+│   └── R_sessionInfo.log
+├── dupradar/
+│   ├── box_plot/
+│   ├── gene_data/
+│   ├── histogram/
+│   ├── intercepts_slope/
+│   └── scatter_plot/
+├── featurecounts/
+│   ├── LNCAP_Hypoxia_S1.biotype_counts_mqc.tsv
+│   ├── LNCAP_Hypoxia_S1.biotype_counts_rrna_mqc.tsv
+│   ├── LNCAP_Hypoxia_S1.featureCounts.txt
+│   ├── LNCAP_Hypoxia_S1.featureCounts.txt.summary
+│   ├── LNCAP_Hypoxia_S2.biotype_counts_mqc.tsv
+│   ├── LNCAP_Hypoxia_S2.biotype_counts_rrna_mqc.tsv
+│   ├── LNCAP_Hypoxia_S2.featureCounts.txt
+│   ├── LNCAP_Hypoxia_S2.featureCounts.txt.summary
+│   ├── LNCAP_Normoxia_S1.biotype_counts_mqc.tsv
+│   ├── LNCAP_Normoxia_S1.biotype_counts_rrna_mqc.tsv
+│   ├── LNCAP_Normoxia_S1.featureCounts.txt
+│   ├── LNCAP_Normoxia_S1.featureCounts.txt.summary
+│   ├── LNCAP_Normoxia_S2.biotype_counts_mqc.tsv
+│   ├── LNCAP_Normoxia_S2.biotype_counts_rrna_mqc.tsv
+│   ├── LNCAP_Normoxia_S2.featureCounts.txt
+│   ├── LNCAP_Normoxia_S2.featureCounts.txt.summary
+│   ├── PC3_Hypoxia_S1.biotype_counts_mqc.tsv
+│   ├── PC3_Hypoxia_S1.biotype_counts_rrna_mqc.tsv
+│   ├── PC3_Hypoxia_S1.featureCounts.txt
+│   ├── PC3_Hypoxia_S1.featureCounts.txt.summary
+│   ├── PC3_Hypoxia_S2.biotype_counts_mqc.tsv
+│   ├── PC3_Hypoxia_S2.biotype_counts_rrna_mqc.tsv
+│   ├── PC3_Hypoxia_S2.featureCounts.txt
+│   ├── PC3_Hypoxia_S2.featureCounts.txt.summary
+│   ├── PC3_Normoxia_S1.biotype_counts_mqc.tsv
+│   ├── PC3_Normoxia_S1.biotype_counts_rrna_mqc.tsv
+│   ├── PC3_Normoxia_S1.featureCounts.txt
+│   ├── PC3_Normoxia_S1.featureCounts.txt.summary
+│   ├── PC3_Normoxia_S2.biotype_counts_mqc.tsv
+│   ├── PC3_Normoxia_S2.biotype_counts_rrna_mqc.tsv
+│   ├── PC3_Normoxia_S2.featureCounts.txt
+│   └── PC3_Normoxia_S2.featureCounts.txt.summary
+├── LNCAP_Hypoxia_S1/
+│   ├── aux_info/
+│   ├── libParams/
+│   ├── logs/
+│   ├── cmd_info.json
+│   ├── quant.genes.sf
+│   └── quant.sf
+├── LNCAP_Hypoxia_S2/
+│   ├── aux_info/
+│   ├── libParams/
+│   ├── logs/
+│   ├── cmd_info.json
+│   ├── quant.genes.sf
+│   └── quant.sf
+├── LNCAP_Normoxia_S1/
+│   ├── aux_info/
+│   ├── libParams/
+│   ├── logs/
+│   ├── cmd_info.json
+│   ├── quant.genes.sf
+│   └── quant.sf
+├── LNCAP_Normoxia_S2/
+│   ├── aux_info/
+│   ├── libParams/
+│   ├── logs/
+│   ├── cmd_info.json
+│   ├── quant.genes.sf
+│   └── quant.sf
+├── log/
+│   ├── LNCAP_Hypoxia_S1.Log.final.out
+│   ├── LNCAP_Hypoxia_S1.Log.out
+│   ├── LNCAP_Hypoxia_S1.Log.progress.out
+│   ├── LNCAP_Hypoxia_S1.SJ.out.tab
+│   ├── LNCAP_Hypoxia_S2.Log.final.out
+│   ├── LNCAP_Hypoxia_S2.Log.out
+│   ├── LNCAP_Hypoxia_S2.Log.progress.out
+│   ├── LNCAP_Hypoxia_S2.SJ.out.tab
+│   ├── LNCAP_Normoxia_S1.Log.final.out
+│   ├── LNCAP_Normoxia_S1.Log.out
+│   ├── LNCAP_Normoxia_S1.Log.progress.out
+│   ├── LNCAP_Normoxia_S1.SJ.out.tab
+│   ├── LNCAP_Normoxia_S2.Log.final.out
+│   ├── LNCAP_Normoxia_S2.Log.out
+│   ├── LNCAP_Normoxia_S2.Log.progress.out
+│   ├── LNCAP_Normoxia_S2.SJ.out.tab
+│   ├── PC3_Hypoxia_S1.Log.final.out
+│   ├── PC3_Hypoxia_S1.Log.out
+│   ├── PC3_Hypoxia_S1.Log.progress.out
+│   ├── PC3_Hypoxia_S1.SJ.out.tab
+│   ├── PC3_Hypoxia_S2.Log.final.out
+│   ├── PC3_Hypoxia_S2.Log.out
+│   ├── PC3_Hypoxia_S2.Log.progress.out
+│   ├── PC3_Hypoxia_S2.SJ.out.tab
+│   ├── PC3_Normoxia_S1.Log.final.out
+│   ├── PC3_Normoxia_S1.Log.out
+│   ├── PC3_Normoxia_S1.Log.progress.out
+│   ├── PC3_Normoxia_S1.SJ.out.tab
+│   ├── PC3_Normoxia_S2.Log.final.out
+│   ├── PC3_Normoxia_S2.Log.out
+│   ├── PC3_Normoxia_S2.Log.progress.out
+│   └── PC3_Normoxia_S2.SJ.out.tab
+├── PC3_Hypoxia_S1/
+│   ├── aux_info/
+│   ├── libParams/
+│   ├── logs/
+│   ├── cmd_info.json
+│   ├── quant.genes.sf
+│   └── quant.sf
+├── PC3_Hypoxia_S2/
+│   ├── aux_info/
+│   ├── libParams/
+│   ├── logs/
+│   ├── cmd_info.json
+│   ├── quant.genes.sf
+│   └── quant.sf
+├── PC3_Normoxia_S1/
+│   ├── aux_info/
+│   ├── libParams/
+│   ├── logs/
+│   ├── cmd_info.json
+│   ├── quant.genes.sf
+│   └── quant.sf
+├── PC3_Normoxia_S2/
+│   ├── aux_info/
+│   ├── libParams/
+│   ├── logs/
+│   ├── cmd_info.json
+│   ├── quant.genes.sf
+│   └── quant.sf
+├── picard_metrics/
+│   ├── LNCAP_Hypoxia_S1.markdup.sorted.MarkDuplicates.metrics.txt
+│   ├── LNCAP_Hypoxia_S2.markdup.sorted.MarkDuplicates.metrics.txt
+│   ├── LNCAP_Normoxia_S1.markdup.sorted.MarkDuplicates.metrics.txt
+│   ├── LNCAP_Normoxia_S2.markdup.sorted.MarkDuplicates.metrics.txt
+│   ├── PC3_Hypoxia_S1.markdup.sorted.MarkDuplicates.metrics.txt
+│   ├── PC3_Hypoxia_S2.markdup.sorted.MarkDuplicates.metrics.txt
+│   ├── PC3_Normoxia_S1.markdup.sorted.MarkDuplicates.metrics.txt
+│   └── PC3_Normoxia_S2.markdup.sorted.MarkDuplicates.metrics.txt
+├── qualimap/
+│   ├── LNCAP_Hypoxia_S1/
+│   ├── LNCAP_Hypoxia_S2/
+│   ├── LNCAP_Normoxia_S1/
+│   ├── LNCAP_Normoxia_S2/
+│   ├── PC3_Hypoxia_S1/
+│   ├── PC3_Hypoxia_S2/
+│   ├── PC3_Normoxia_S1/
+│   └── PC3_Normoxia_S2/
+├── rseqc/
+│   ├── bam_stat/
+│   ├── infer_experiment/
+│   ├── inner_distance/
+│   ├── junction_annotation/
+│   ├── junction_saturation/
+│   ├── read_distribution/
+│   └── read_duplication/
+├── samtools_stats/
+│   ├── LNCAP_Hypoxia_S1.markdup.sorted.bam.flagstat
+│   ├── LNCAP_Hypoxia_S1.markdup.sorted.bam.idxstats
+│   ├── LNCAP_Hypoxia_S1.markdup.sorted.bam.stats
+│   ├── LNCAP_Hypoxia_S1.sorted.bam.flagstat
+│   ├── LNCAP_Hypoxia_S1.sorted.bam.idxstats
+│   ├── LNCAP_Hypoxia_S1.sorted.bam.stats
+│   ├── LNCAP_Hypoxia_S2.markdup.sorted.bam.flagstat
+│   ├── LNCAP_Hypoxia_S2.markdup.sorted.bam.idxstats
+│   ├── LNCAP_Hypoxia_S2.markdup.sorted.bam.stats
+│   ├── LNCAP_Hypoxia_S2.sorted.bam.flagstat
+│   ├── LNCAP_Hypoxia_S2.sorted.bam.idxstats
+│   ├── LNCAP_Hypoxia_S2.sorted.bam.stats
+│   ├── LNCAP_Normoxia_S1.markdup.sorted.bam.flagstat
+│   ├── LNCAP_Normoxia_S1.markdup.sorted.bam.idxstats
+│   ├── LNCAP_Normoxia_S1.markdup.sorted.bam.stats
+│   ├── LNCAP_Normoxia_S1.sorted.bam.flagstat
+│   ├── LNCAP_Normoxia_S1.sorted.bam.idxstats
+│   ├── LNCAP_Normoxia_S1.sorted.bam.stats
+│   ├── LNCAP_Normoxia_S2.markdup.sorted.bam.flagstat
+│   ├── LNCAP_Normoxia_S2.markdup.sorted.bam.idxstats
+│   ├── LNCAP_Normoxia_S2.markdup.sorted.bam.stats
+│   ├── LNCAP_Normoxia_S2.sorted.bam.flagstat
+│   ├── LNCAP_Normoxia_S2.sorted.bam.idxstats
+│   ├── LNCAP_Normoxia_S2.sorted.bam.stats
+│   ├── PC3_Hypoxia_S1.markdup.sorted.bam.flagstat
+│   ├── PC3_Hypoxia_S1.markdup.sorted.bam.idxstats
+│   ├── PC3_Hypoxia_S1.markdup.sorted.bam.stats
+│   ├── PC3_Hypoxia_S1.sorted.bam.flagstat
+│   ├── PC3_Hypoxia_S1.sorted.bam.idxstats
+│   ├── PC3_Hypoxia_S1.sorted.bam.stats
+│   ├── PC3_Hypoxia_S2.markdup.sorted.bam.flagstat
+│   ├── PC3_Hypoxia_S2.markdup.sorted.bam.idxstats
+│   ├── PC3_Hypoxia_S2.markdup.sorted.bam.stats
+│   ├── PC3_Hypoxia_S2.sorted.bam.flagstat
+│   ├── PC3_Hypoxia_S2.sorted.bam.idxstats
+│   ├── PC3_Hypoxia_S2.sorted.bam.stats
+│   ├── PC3_Normoxia_S1.markdup.sorted.bam.flagstat
+│   ├── PC3_Normoxia_S1.markdup.sorted.bam.idxstats
+│   ├── PC3_Normoxia_S1.markdup.sorted.bam.stats
+│   ├── PC3_Normoxia_S1.sorted.bam.flagstat
+│   ├── PC3_Normoxia_S1.sorted.bam.idxstats
+│   ├── PC3_Normoxia_S1.sorted.bam.stats
+│   ├── PC3_Normoxia_S2.markdup.sorted.bam.flagstat
+│   ├── PC3_Normoxia_S2.markdup.sorted.bam.idxstats
+│   ├── PC3_Normoxia_S2.markdup.sorted.bam.stats
+│   ├── PC3_Normoxia_S2.sorted.bam.flagstat
+│   ├── PC3_Normoxia_S2.sorted.bam.idxstats
+│   └── PC3_Normoxia_S2.sorted.bam.stats
+├── stringtie/
+│   ├── LNCAP_Hypoxia_S1.ballgown/
+│   ├── LNCAP_Hypoxia_S2.ballgown/
+│   ├── LNCAP_Normoxia_S1.ballgown/
+│   ├── LNCAP_Normoxia_S2.ballgown/
+│   ├── PC3_Hypoxia_S1.ballgown/
+│   ├── PC3_Hypoxia_S2.ballgown/
+│   ├── PC3_Normoxia_S1.ballgown/
+│   ├── PC3_Normoxia_S2.ballgown/
+│   ├── LNCAP_Hypoxia_S1.coverage.gtf
+│   ├── LNCAP_Hypoxia_S1.gene.abundance.txt
+│   ├── LNCAP_Hypoxia_S1.transcripts.gtf
+│   ├── LNCAP_Hypoxia_S2.coverage.gtf
+│   ├── LNCAP_Hypoxia_S2.gene.abundance.txt
+│   ├── LNCAP_Hypoxia_S2.transcripts.gtf
+│   ├── LNCAP_Normoxia_S1.coverage.gtf
+│   ├── LNCAP_Normoxia_S1.gene.abundance.txt
+│   ├── LNCAP_Normoxia_S1.transcripts.gtf
+│   ├── LNCAP_Normoxia_S2.coverage.gtf
+│   ├── LNCAP_Normoxia_S2.gene.abundance.txt
+│   ├── LNCAP_Normoxia_S2.transcripts.gtf
+│   ├── PC3_Hypoxia_S1.coverage.gtf
+│   ├── PC3_Hypoxia_S1.gene.abundance.txt
+│   ├── PC3_Hypoxia_S1.transcripts.gtf
+│   ├── PC3_Hypoxia_S2.coverage.gtf
+│   ├── PC3_Hypoxia_S2.gene.abundance.txt
+│   ├── PC3_Hypoxia_S2.transcripts.gtf
+│   ├── PC3_Normoxia_S1.coverage.gtf
+│   ├── PC3_Normoxia_S1.gene.abundance.txt
+│   ├── PC3_Normoxia_S1.transcripts.gtf
+│   ├── PC3_Normoxia_S2.coverage.gtf
+│   ├── PC3_Normoxia_S2.gene.abundance.txt
+│   └── PC3_Normoxia_S2.transcripts.gtf
+├── LNCAP_Hypoxia_S1.markdup.sorted.bam
+├── LNCAP_Hypoxia_S1.markdup.sorted.bam.bai
+├── LNCAP_Hypoxia_S2.markdup.sorted.bam
+├── LNCAP_Hypoxia_S2.markdup.sorted.bam.bai
+├── LNCAP_Normoxia_S1.markdup.sorted.bam
+├── LNCAP_Normoxia_S1.markdup.sorted.bam.bai
+├── LNCAP_Normoxia_S2.markdup.sorted.bam
+├── LNCAP_Normoxia_S2.markdup.sorted.bam.bai
+├── null.merged.gene_counts_length_scaled.SummarizedExperiment.rds
+├── null.merged.gene_counts_scaled.SummarizedExperiment.rds
+├── null.merged.gene_counts.SummarizedExperiment.rds
+├── null.merged.transcript_counts.SummarizedExperiment.rds
+├── PC3_Hypoxia_S1.markdup.sorted.bam
+├── PC3_Hypoxia_S1.markdup.sorted.bam.bai
+├── PC3_Hypoxia_S2.markdup.sorted.bam
+├── PC3_Hypoxia_S2.markdup.sorted.bam.bai
+├── PC3_Normoxia_S1.markdup.sorted.bam
+├── PC3_Normoxia_S1.markdup.sorted.bam.bai
+├── PC3_Normoxia_S2.markdup.sorted.bam
+├── PC3_Normoxia_S2.markdup.sorted.bam.bai
+├── salmon.merged.gene_counts_length_scaled.tsv
+├── salmon.merged.gene_counts_scaled.tsv
+├── salmon.merged.gene_counts.tsv
+├── salmon.merged.gene_lengths.tsv
+├── salmon.merged.gene_tpm.tsv
+├── salmon.merged.transcript_counts.tsv
+├── salmon.merged.transcript_lengths.tsv
+├── salmon.merged.transcript_tpm.tsv
+└── tx2gene.tsv
+```
+</details>
+
+# 🎡 Differential Expression Analysis 
+
+## 📊 Introduction to DESeq2
+
+[DESeq2](https://bioconductor.org/packages/release/bioc/html/DESeq2.html) is a robust method for differential expression analysis[@RN14] that:
+
+- Uses negative binomial distribution to model count data
+- Estimates size factors for library normalization
+- Calculates dispersion estimates
+- Performs statistical tests for differential expression
+
+::: {.objectives-box style="background-color: #e8f5e9; padding: 15px; border-radius: 5px; margin: 15px 0;"}
+**🎯 Analysis Objectives:**
+1. 🔍 Identify genes differentially expressed between:
+   - 🌡️ Hypoxic vs normoxic conditions
+   - 🧫 LNCaP and PC3 cell lines
+2. 🔄 Account for batch effects and experimental variables
+3. 📊 Generate visualizations to validate results
+:::
+
+
+## 📥 Data Import and Preprocessing
+
+Let's start by examining our count data from the RNA-seq pipeline:
+
+```{r load_count_data}
+# Read and process count data
+data <- read.table(
+  "data/salmon.merged.gene_counts_length_scaled.tsv", 
+  header = TRUE, 
+  row.names = 1
+)
+
+# Sort columns and round to integers
+data <- data[, sort(colnames(data))]
+data_round <- round(data[2:9], digits = 0)
+
+# Preview the data
+head(data_round)
+```
+<br>
+
+::: {.analysis-box style="background-color: #fff3e0; padding: 15px; border-radius: 5px; margin: 15px 0;"}
+**Data Structure:**
+- 60,676 rows (genes)
+- 8 columns (samples)
+- Values represent raw read counts per gene per sample
+:::
+
+### 📊 Examining Sequencing Depth
+
+Let's check the total number of reads (sequencing depth) for each sample:
+
+```{r sequencing_depth}
+# Calculate total reads per sample
+total_reads <- colSums(data_round[1:8])
+
+# Create a data frame for display
+reads_df <- data.frame(
+  Sample = names(total_reads),
+  Total_Reads = total_reads,
+  Total_Reads_Millions = round(total_reads / 1e6, 2),
+  row.names = NULL
+)
+reads_df 
+```
+
+::: {.depth-analysis style="background-color: #e8eaf6; padding: 15px; border-radius: 5px; margin: 15px 0;"}
+**Sequencing Depth Analysis:**
+
+Sample depth varies considerably:
+- Highest: LNCAP_Normoxia_S2 (~57M reads)
+- Lowest: PC3_Normoxia_S1 (~17M reads)
+
+**Key Observations:**
+1. Over 3-fold difference between highest and lowest depth
+2. PC3_Hypoxia_S2 has notably low depth (~17M reads)
+3. Most samples have 40-55M reads
+
+**Implications:**
+- Direct comparison of raw counts not possible
+- Normalization required to account for depth differences
+- DESeq2 will handle this through size factor estimation
+:::
+
+### ⚖️ Need for Normalization
+
+Before proceeding with differential expression analysis, we need to account for:
+
+1. **Library Size Differences**
+   - Different total read counts between samples
+   - Affects absolute expression values
+
+2. **Technical Biases**
+   - Sequencing depth variations
+   - RNA composition differences
+   - GC content bias
+
+::: {.note-box style="background-color: #e1f5fe; padding: 15px; border-radius: 5px; margin: 15px 0;"}
+**💡 Note:** DESeq2 handles normalization through:
+- Size factor estimation
+- Variance stabilizing transformation
+- Dispersion estimation
+:::
+
+
+
+## ⚙️ DESeq2 Setup and Configuration
+
+### 🔧 Creating the DESeq2 Object
+
+A DESeq2 analysis requires three key components:
+
+::: {.deseq-components style="background-color: #f3e5f5; padding: 15px; border-radius: 5px; margin: 15px 0;"}
+**Required Components:**
+
+1. `countData` 
+   - Integer matrix of gene counts
+   - Rows = genes, Columns = samples
+   - Generated by Salmon quantification
+
+2. `colData`
+   - Sample metadata/experimental design
+   - Treatment conditions
+   - Batch information
+   - Other covariates
+
+3. `design` Formula
+   - Specifies model for testing
+   - Variables to compare
+   - Additional factors to consider
+:::
+
+### 📋 Preparing Sample Groups
+
+First, let's define our experimental conditions:
+
+```{r setup_conditions}
+# Define experimental conditions
+condition <- c(
+  rep("LNCAP_Hypoxia", 2),  # LNCaP hypoxia replicates
+  rep("LNCAP_Normoxia", 2), # LNCaP normoxia replicates
+  rep("PC3_Hypoxia", 2),    # PC3 hypoxia replicates
+  rep("PC3_Normoxia", 2)    # PC3 normoxia replicates
+)
+```
+
+### 📝 Creating Sample Metadata
+
+Next, create a data frame with sample information:
+
+```{r setup_metadata}
+# Create sample metadata data frame
+my_colData <- data.frame(
+  rownames = colnames(data_round)[1:8],  # Sample names
+  condition = factor(condition)           # Experimental conditions
+)
+
+# Reorder columns and display
+my_colData <- my_colData[, c("rownames", "condition")]
+my_colData
+```
+
+### Initializing the DESeq2 Object
+
+With our count data and sample metadata prepared, we can create the DESeq2 object:
+
+```{r create_deseq_object}
+# Create DESeqDataSet object
+dds <- DESeqDataSetFromMatrix(
+  countData = data_round,     # Count matrix
+  colData = my_colData,       # Sample metadata
+  design = ~ condition        # Experimental design
+)
+
+# Display object information
+dds
+```
+
+### 🚀 Running the DESeq2 Analysis
+
+The `DESeq()` function performs the core differential expression analysis through several steps:
+
+::: {.deseq-steps style="background-color: #fff3e0; padding: 15px; border-radius: 5px; margin: 15px 0;"}
+**Analysis Steps:**
+
+1. **Size Factor Estimation**
+   - Normalizes for sequencing depth
+   - Accounts for library size differences
+
+2. **Dispersion Estimation**
+   - Calculates gene-wise dispersion
+   - Fits mean-dispersion relationship
+   - Shrinks estimates toward trend line
+
+3. **Model Fitting and Testing**
+   - Fits negative binomial GLM
+   - Performs Wald tests
+   - Calculates p-values
+:::
+
+Let's run the analysis:
+
+```{r run_deseq}
+# Run DESeq2 analysis
+dds <- DESeq(dds)
+
+# View results summary
+dds
+```
+
+
+### 🔍 Examining DESeq2 Results
+
+The DESeq2 object contains various data components that we can inspect:
+
+::: {.data-components style="background-color: #e8eaf6; padding: 15px; border-radius: 5px; margin: 15px 0;"}
+**Available Data:**
+- Raw counts
+- Normalized counts
+- Size factors
+- Dispersions
+- Model coefficients
+- Test statistics
+:::
+
+#### 📊 Raw Count Data
+
+Let's examine the raw count matrix:
+
+```{r examine_counts, eval=FALSE}
+# View raw counts for first few genes
+dds@assays@data$counts
+```
+```{r display_raw_counts_matrix , echo=FALSE,  results='asis'}
+kable(head(dds@assays@data$counts)) %>%
+  kable_styling(bootstrap_options = "striped", full_width = FALSE) %>%
+  scroll_box(width = "100%", box_css = "border: 1px solid #ddd; padding: 5px;")
+```
+
+::: {.observation-box style="background-color: #e3f2fd; padding: 15px; border-radius: 5px; margin: 15px 0;"}
+**Key Observations:**
+1. Counts vary widely between genes
+2. Some genes show consistent expression patterns
+3. Many genes have zero counts in some samples
+4. Expression patterns differ between cell lines
+:::
+
+#### ⚖️ Normalized Count Data
+
+DESeq2 provides size-factor normalized counts that account for sequencing depth differences:
+
+```{r get_normalized_counts}
+# Get normalized counts
+normalized_counts <- counts(dds, normalized = TRUE)
+
+```
+```{r display_normalized_counts_matrix , echo=FALSE,  results='asis'}
+kable(head(normalized_counts)) %>%
+  kable_styling(bootstrap_options = "striped", full_width = FALSE) %>%
+  scroll_box(width = "100%", box_css = "border: 1px solid #ddd; padding: 5px;")
+```
+
+**Accessing Count Data:**
+
+1. **Raw Counts:**
+```{r raw_counts, eval=FALSE}
+counts(dds, normalized = FALSE)
+```
+```{r display_raw_counts , echo=FALSE,  results='asis'}
+
+kable(head(counts(dds, normalized = FALSE))) %>%
+  kable_styling(bootstrap_options = "striped", full_width = FALSE) %>%
+  scroll_box(width = "100%", box_css = "border: 1px solid #ddd; padding: 5px;")
+# or dds@assays@data$counts
+```
+
+
+
+2. **Normalized Counts:**
+```{r normalized_counts, eval=FALSE}
+counts(dds, normalized = TRUE)
+```
+```{r display_normalized_counts_table , echo=FALSE,  results='asis'}
+kable(head(counts(dds, normalized = TRUE))) %>%
+  kable_styling(bootstrap_options = "striped", full_width = FALSE) %>%
+  scroll_box(width = "100%", box_css = "border: 1px solid #ddd; padding: 5px;")
+```
+
+
+3. **Size Factors:**
+```{r size_factors}
+sizeFactors(dds)
+```
+
+<br>
+
+::: {.normalization-effects style="background-color: #fce4ec; padding: 15px; border-radius: 5px; margin: 15px 0;"}
+**Effects of Normalization:**
+
+1. **Value Scaling**
+   - Raw counts transformed to comparable scales
+   - Accounts for sequencing depth differences
+   - Enables direct sample comparisons
+
+2. **Expression Patterns**
+   - Relative expression levels preserved
+   - Zero counts remain zero
+   - Non-zero counts adjusted proportionally
+
+3. **Notable Examples**
+   - ENSG00000000419: High expression, consistent across samples
+   - ENSG00000000005: No expression in any sample
+   - ENSG00000000003: Variable expression between cell lines
+:::
+
+These normalized counts provide a foundation for:
+- Comparing expression between samples
+- Visualizing gene expression patterns
+- Identifying differentially expressed genes
+
+
+
+# 🏷️ Adding Gene Annotations
+
+## 🔍 Using BioMart for Gene Information
+
+To make our analysis more interpretable, we'll convert Ensembl IDs to common gene names using BioMart[@RN15]:
+
+::: {.biomart-instructions style="background-color: #e8f5e9; padding: 15px; border-radius: 5px; margin: 15px 0;"}
+**BioMart Data Export Steps:**
+
+1. **Access BioMart**
+   - Visit [Ensembl BioMart](http://ensembl.org/biomart/martview/)
+   - Select "Ensembl Genes 114"
+
+2. **Choose Dataset**
+   - Database: Human Genes (GRCh38.p14)
+   - Ensure matching genome version
+
+3. **Select Attributes**
+   - ✓ Gene stable ID (ENSG00000111640)
+   - ✓ Gene name (GAPDH)
+   - ✓ Gene type (for pathway analysis)
+
+4. **Export Settings**
+   - Format: CSV
+   - Option: "Unique results only"
+   - File: "GRCh38.p14_annotation.csv"
+:::
+
+
+
+
+## 📥 Loading Annotations
+
+Import and examine the annotation data:
+
+```{r load_annotations}
+# Read annotation file
+annotation <- read.csv(
+  "reference_genomes/GRCh38.p14_annotation.csv", 
+  header = TRUE, 
+  stringsAsFactors = FALSE
+)
+
+# Preview annotations
+head(annotation)
+```
+<br>
+
+::: {.annotation-info style="background-color: #f3e5f5; padding: 15px; border-radius: 5px; margin: 15px 0;"}
+**Annotation Information:**
+- Gene stable ID: Unique Ensembl identifier
+- Gene name: Common gene symbol
+- Gene type: Biological classification
+:::
+
+
+
+## 🔄 Combining Expression and Annotation Data
+
+We'll merge the normalized counts with gene annotations using tidyverse functions:
+
+```{r merge_annotations}
+# Convert normalized counts to data frame with Ensembl IDs
+normalized_counts <- rownames_to_column(
+  as.data.frame(normalized_counts), 
+  var = "ensembl_id"
+)
+
+# Join annotations with expression data
+annotated_data <- right_join(
+  annotation, 
+  normalized_counts, 
+  by = c("Gene.stable.ID" = "ensembl_id")
+)
+
+# Preview merged data
+head(annotated_data)
+
+# Save annotated results
+write.csv(
+  annotated_data, 
+  file = "results/gene_annotated_normalized_counts.csv",
+  row.names = FALSE
+)
+```
+
+<br>
+
+::: {.merged-data-features style="background-color: #e1f5fe; padding: 15px; border-radius: 5px; margin: 15px 0;"}
+**Features of Merged Dataset:**
+
+1. **Comprehensive Information**
+   - Gene identifiers (Ensembl ID)
+   - Common gene names
+   - Gene biotypes
+   - Normalized expression values
+
+2. **Example Insights**
+   - MT-RNR1/2: Highly expressed mitochondrial rRNAs
+   - MT-TF/TV: Low expression tRNAs
+   - MT-ND1: Moderate expression protein-coding gene
+
+3. **Data Structure**
+   - Organized by gene
+   - Expression values by condition
+   - Ready for downstream analysis
+:::
+
+The annotated expression data provides several advantages:
+- Easy gene lookup by symbol
+- Biological context through gene types
+- Normalized values for direct comparisons
+- Export-ready format for collaboration
+
+Next, we'll explore visualizations of this data to understand expression patterns and identify differentially expressed genes.
+
+
+
+# 🔍 Quality Control and Exploratory Analysis
+
+## 📊 Sample Variability Assessment
+
+Before proceeding with differential expression analysis, it's crucial to assess sample-to-sample variability to:
+- Identify potential outliers
+- Validate experimental design
+- Confirm replicate similarity
+- Detect batch effects
+
+::: {.analysis-objectives style="background-color: #fff3e0; padding: 15px; border-radius: 5px; margin: 15px 0;"}
+**Key Questions to Address:**
+1. How similar are biological replicates?
+2. Do samples cluster by experimental condition?
+3. Are there any obvious batch effects?
+4. Which genes show high variability?
+:::
+
+### 🔄 Data Transformation
+
+We'll use variance stabilizing transformation (VST) to prepare data for visualization:
+
+```{r transform_data}
+# Apply variance stabilizing transformation
+vsd <- vst(dds, blind = TRUE)
+
+# Confirm transformation
+print(sprintf("Number of genes transformed: %d", nrow(vsd)))
+```
+
+::: {.transformation-note style="background-color: #e8f5e9; padding: 15px; border-radius: 5px; margin: 15px 0;"}
+**💡 Why VST?**
+- Reduces mean-dependent variance
+- Makes data more suitable for visualization
+- Enables comparison across wide expression ranges
+- Preserves relative differences between samples
+:::
+
+### 📊 Sample Distance Analysis
+
+We'll create a heatmap of sample-to-sample distances to visualize relationships between samples:
+
+::: {.analysis-method style="background-color: #e3f2fd; padding: 15px; border-radius: 5px; margin: 15px 0;"}
+**Method Overview:**
+1. Calculate Euclidean distances between samples
+2. Create distance matrix
+3. Perform hierarchical clustering
+4. Visualize as heatmap
+:::
+
+```{r sample_distances, eval=FALSE}
+# Function to plot sample distances
+plotDists <- function(vsd.obj) {
+  # Calculate sample distances
+  sampleDists <- dist(t(assay(vsd.obj)))
+  sampleDistMatrix <- as.matrix(sampleDists)
+  
+  # Add condition labels
+  rownames(sampleDistMatrix) <- paste(vsd.obj$condition)
+  
+  # Create color palette
+  colors <- colorRampPalette(
+    rev(RColorBrewer::brewer.pal(9, "Blues"))
+  )(255)
+  
+  # Generate heatmap
+  pheatmap::pheatmap(
+    sampleDistMatrix,
+    clustering_distance_rows = sampleDists,
+    clustering_distance_cols = sampleDists,
+    col = colors,
+    main = "Sample Distance Matrix",
+    fontsize = 15,
+    border_color = NA
+  )
+}
+
+# Generate and save plots
+p1 <- plotDists(vsd)
+p1
+```
+
+```{r save_heatmap, echo=FALSE, eval=FALSE}
+ggsave(
+  filename = "figures/Euclidean_distance_between_the_expression_values.pdf", 
+  plot = p1, 
+  width = 16, 
+  height = 12,
+  dpi = 300
+)
+ggsave(
+  filename = "images/Euclidean_distance_between_the_expression_values.png", 
+  plot = p1, 
+  width = 16, 
+  height = 12,
+  dpi = 300
+)
+```
+
+<div class="figure" style="text-align: center">
+<img src="images/Euclidean_distance_between_the_expression_values.png" alt="Sample Distance Heatmap" width="80%" />
+<p class="caption">**Figure 3:** Hierarchical clustering of sample-to-sample distances</p>
+</div>
+
+::: {.results-interpretation style="background-color: #f3e5f5; padding: 15px; border-radius: 5px; margin: 15px 0;"}
+**Key Observations:**
+
+1. **Primary Clustering**
+   - Clear separation by cell type (LNCaP vs PC3)
+   - Strongest factor in sample variation
+
+2. **Secondary Clustering**
+   - Samples group by treatment (hypoxia vs normoxia)
+   - Consistent within cell types
+
+3. **Replicate Similarity**
+   - Biological replicates cluster together
+   - Indicates good experimental reproducibility
+
+4. **Quality Validation**
+   - Expected hierarchical grouping
+   - No obvious outliers
+   - Confirms sample quality
+:::
+
+The clustering patterns validate our experimental design and suggest high-quality data suitable for differential expression analysis.
+
+### 🔍 Analysis of Highly Variable Genes
+
+Examining the most variable genes helps identify key drivers of sample differences and potential markers:
+
+::: {.analysis-approach style="background-color: #e8f5e9; padding: 15px; border-radius: 5px; margin: 15px 0;"}
+**Analysis Strategy:**
+1. Calculate gene-wise variance
+2. Select top variable genes
+3. Center expression values
+4. Create annotated heatmap
+5. Identify expression patterns
+:::
+
+```{r variable_genes, eval=FALSE}
+# Function to create variable gene heatmap
+variable_gene_heatmap <- function(vsd.obj, num_genes = 500, annotation, title = "") {
+  # Set up color scheme
+  brewer_palette <- "RdBu"
+  ramp <- colorRampPalette(RColorBrewer::brewer.pal(11, brewer_palette))
+  mr <- ramp(256)[256:1]
+  
+  # Process expression data
+  stabilized_counts <- assay(vsd.obj)
+  row_variances <- rowVars(stabilized_counts)
+  
+  # Select top variable genes
+  top_variable_genes <- stabilized_counts[
+    order(row_variances, decreasing=TRUE)[1:num_genes],
+  ]
+  
+  # Center expression values
+  top_variable_genes <- top_variable_genes - 
+    rowMeans(top_variable_genes, na.rm=TRUE)
+  
+  # Map to gene symbols
+  gene_names <- annotation$Gene.name[
+    match(rownames(top_variable_genes), annotation$Gene.stable.ID)
+  ]
+  rownames(top_variable_genes) <- gene_names
+  
+  # Prepare sample annotations
+  coldata <- as.data.frame(vsd.obj@colData)
+  coldata$sizeFactor <- NULL
+  
+  # Generate heatmap
+  pheatmap::pheatmap(
+    top_variable_genes,
+    color = mr,
+    annotation_col = coldata,
+    fontsize_col = 8,
+    fontsize_row = 250/num_genes,
+    border_color = NA,
+    main = title,
+    show_rownames = TRUE,
+    cluster_cols = TRUE,
+    cluster_rows = TRUE,
+    clustering_method = "complete",
+    clustering_distance_rows = "euclidean",
+    clustering_distance_cols = "euclidean"
+  )
+}
+
+# Generate and save heatmap
+p2 <- variable_gene_heatmap(
+  vsd, 
+  num_genes = 40, 
+  annotation = annotation,
+  title = "Top 40 Most Variable Genes"
+)
+p2
+
+```
+
+```{r save_variable_heatmap, echo=FALSE, eval=FALSE}
+# Save plots
+ggsave(
+  filename = "figures/variable-gene-heatmap-all-samples.pdf",
+  plot = p2,
+  width = 12,
+  height = 9,
+  dpi = 300
+)
+ggsave(
+  filename = "images/variable-gene-heatmap-all-samples.png",
+  plot = p2,
+  width = 12,
+  height = 9,
+  dpi = 300
+)
+```
+
+<div class="figure" style="text-align: center">
+<img src="images/variable-gene-heatmap-all-samples.png" alt="Variable Genes Heatmap" width="80%" />
+<p class="caption">**Figure 4:** Heatmap of top 40 most variable genes</p>
+</div>
+
+::: {.heatmap-interpretation style="background-color: #fff3e0; padding: 15px; border-radius: 5px; margin: 15px 0;"}
+**Key Patterns:**
+
+1. **Cell Line-Specific Expression**
+   - Distinct gene sets for LNCaP vs PC3
+   - Clear molecular signatures
+   - Strong cell type identity
+
+2. **Treatment Effects**
+   - Secondary clustering by hypoxia/normoxia
+   - Consistent response patterns
+   - Cell type-specific responses
+
+3. **Replicate Consistency**
+   - Similar patterns within conditions
+   - Good technical reproducibility
+   - Minimal batch effects
+
+4. **Data Quality Indicators**
+   - Clear separation of conditions
+   - Expected biological patterns
+   - No anomalous clusters
+:::
+
+::: {.biological-context style="background-color: #e1f5fe; padding: 15px; border-radius: 5px; margin: 15px 0;"}
+**Biological Implications:**
+
+1. **Cell Line Differences**
+   - Expected clear clustering for cell lines
+   - Reflects distinct cancer subtypes
+   - Validates experimental design
+
+2. **Sample Heterogeneity**
+   - Low variability within cell lines
+   - More variation expected in tissue samples
+   - Useful for quality control
+
+3. **Applications**
+   - Cell line authentication
+   - Contamination detection
+   - Batch effect assessment
+:::
+
+The distinct clustering patterns confirm the quality of our experimental design and data, providing a solid foundation for differential expression analysis.
+
+### 📈 Principal Component Analysis
+
+Principal Component Analysis (PCA) helps visualize the major sources of variation in our dataset:
+
+::: {.pca-overview style="background-color: #e8f5e9; padding: 15px; border-radius: 5px; margin: 15px 0;"}
+**PCA Benefits:**
+- Reduces data dimensionality
+- Identifies major variance sources
+- Reveals sample relationships
+- Highlights potential batch effects
+:::
+
+```{r pca_analysis, eval=FALSE}
+# Function to create PCA plot
+plot_PCA <- function(vsd.obj) {
+  # Generate PCA data
+  pcaData <- plotPCA(vsd.obj, 
+                     intgroup = c("condition"), 
+                     returnData = TRUE)
+  
+  # Calculate variance percentages
+  percentVar <- round(100 * attr(pcaData, "percentVar"))
+  
+  # Create enhanced PCA plot
+  ggplot(pcaData, aes(PC1, PC2, color = condition)) +
+    # Add points with larger size
+    geom_point(size = 8, alpha = 0.8) +
+    
+    # Add labels with repulsion
+    ggrepel::geom_text_repel(
+      aes(label = name),
+      color = "black",
+      size = 3,
+      box.padding = 0.5,
+      point.padding = 0.5
+    ) +
+    
+    # Customize theme
+    theme_bw() +
+    theme(
+      legend.position = "right",
+      panel.grid.major = element_line(color = "grey90"),
+      panel.grid.minor = element_blank(),
+      axis.text = element_text(size = 10),
+      axis.title = element_text(size = 12, face = "bold"),
+      legend.title = element_text(size = 11, face = "bold"),
+      legend.text = element_text(size = 10),
+      plot.title = element_text(size = 14, face = "bold", hjust = 0.5)
+    ) +
+    
+    # Add labels and title
+    labs(
+      x = paste0("PC1: ", percentVar[1], "% variance"),
+      y = paste0("PC2: ", percentVar[2], "% variance"),
+      title = "Principal Component Analysis",
+      color = "Condition"
+    )
+}
+
+# Generate and save PCA plot
+p3 <- plot_PCA(vsd)
+p3
+
+```
+```{r save_pca_plot, echo=FALSE, eval=FALSE}
+# Save high-quality versions
+ggsave(filename = "figures/PCA-plot.pdf", 
+       plot = p3, 
+       width = 16, 
+       height = 12,
+       dpi = 300)
+pdf_convert("figures/PCA-plot.pdf", 
+            format = "png", 
+            filenames = "figures/PCA-plot.png",
+            dpi = 300)
+```
+
+<div class="figure" style="text-align: center">
+<img src="figures/PCA-plot.jpg" alt="Principal Component Analysis" width="80%" />
+<p class="caption">**Figure 5:** PCA plot</p>
+</div>
+
+::: {.pca-interpretation style="background-color: #f3e5f5; padding: 15px; border-radius: 5px; margin: 15px 0;"}
+**🔍 Key Observations:**
+
+1. ** Primary Variation (PC1: ~99%)**
+   -  Dominant separation by cell type
+   -  LNCaP vs PC3 is major source of variance
+   -  Clear biological distinction
+
+2. **Secondary Variation (PC2)**
+   - Separates hypoxia vs normoxia
+   - Smaller effect than cell type
+   - Consistent within cell lines
+
+3. **Biological Implications**
+   - Cell type identity is preserved
+   - Hypoxia response is cell type-specific
+   - Good experimental separation
+:::
+
+::: {.analysis-strategy style="background-color: #e1f5fe; padding: 15px; border-radius: 5px; margin: 15px 0;"}
+**📋 Recommended Analysis Strategy:**
+
+Given the strong cell type effect, we should:
+1. Separate LNCaP and PC3 samples
+2. Create individual DESeq2 objects per cell line
+3. Analyze hypoxia effects independently
+4. Compare responses between cell lines
+:::
+
+This approach will help isolate treatment effects from the overwhelming cell type differences.
+
+
+
+
+# 🧫 Cell Line-Specific Analysis
+
+## 📋 Overview
+
+::: {.section-overview style="background-color: #f0f4f8; padding: 20px; border-radius: 5px; margin: 20px 0;"}
+**Key Points:**
+- PCA reveals cell type as dominant source of variation
+- Separate analyses needed for unbiased hypoxia response assessment
+- Cell-specific analysis enables identification of:
+  - Common hypoxia response genes
+  - Cell type-specific responses
+  - Potential therapeutic targets
+:::
+
+
+
+
+## 📊 Analysis Strategy
+
+Based on our exploratory analysis, we'll employ a systematic approach:
+
+::: {.analysis-plan style="background-color: #e8f5e9; padding: 20px; border-radius: 5px; margin: 20px 0;"}
+**1. Data Separation**
+- Create cell line-specific datasets
+- Preserve biological replicates
+- Maintain data structure
+
+**2. Independent Analysis**
+- Generate cell-specific DESeq2 objects
+- Perform normalized analyses
+- Control for technical factors
+
+**3. Response Comparison**
+- Identify shared responses
+- Highlight cell-specific patterns
+- Quantify effect sizes
+
+**4. Biological Integration**
+- Pathway analysis by cell type
+- Mechanistic insights
+- Therapeutic implications
+:::
+
+
+
+## 🔬 Cell Line Data Preparation
+
+We'll create a robust function for generating cell-specific DESeq2 objects:
+
+```{r create_cell_specific_deseq}
+#' Create Cell-Specific DESeq2 Object
+#'
+#' This function creates a DESeq2 object for analyzing differential expression
+#' within a specific cell line. It handles data subsetting, quality control,
+#' and DESeq2 initialization.
+#'
+#' @param my_data Count matrix with genes as rows and samples as columns
+#' @param groups Character vector of length 2 specifying conditions to compare
+#' @return A DESeq2 object ready for differential expression analysis
+generate_DESeq_object <- function(my_data, groups) {
+  # Input validation
+  if (length(groups) != 2) {
+    stop("Exactly two groups must be provided for comparison")
+  }
+  
+  # Extract and validate data for each group
+  data_subset1 <- my_data[, grep(str_c("^", groups[1]), colnames(my_data))]
+  data_subset2 <- my_data[, grep(str_c("^", groups[2]), colnames(my_data))]
+  
+  if (ncol(data_subset1) == 0 || ncol(data_subset2) == 0) {
+    stop("No samples found for one or both groups")
+  }
+  
+  # Combine data
+  my_countData <- cbind(data_subset1, data_subset2)
+  
+  # Create condition vector with informative names
+  condition <- c(
+    rep(groups[1], ncol(data_subset1)), 
+    rep(groups[2], ncol(data_subset2))
+  )
+  
+  # Create comprehensive sample metadata
+  my_colData <- data.frame(
+    condition = factor(condition),
+    cell_line = factor(str_extract(condition, "^[^_]+")),
+    treatment = factor(str_extract(condition, "[^_]+$")),
+    row.names = colnames(my_countData)
+  )
+  
+  # Create DESeq2 object with quality filters
+  dds <- DESeqDataSetFromMatrix(
+    countData = my_countData,
+    colData = my_colData,
+    design = ~ condition
+  )
+  
+  # Filter low-count genes
+  keep <- rowSums(counts(dds)) >= 10
+  dds <- dds[keep,]
+  message(sprintf("\nRetained %d genes after filtering", nrow(dds)))
+  
+  # Run DESeq2 analysis
+  message("\nRunning DESeq2 analysis...")
+  dds <- DESeq(dds, quiet = TRUE)
+  
+  # Report completion
+  message("Analysis complete!")
+  
+  return(dds)
+}
+```
+<br>
+
+Let's create cell-specific DESeq2 objects and validate their structure:
+
+```{r create_cell_objects}
+# Create LNCaP-specific object
+lncap <- generate_DESeq_object(
+  data_round, 
+  c("LNCAP_Hypoxia", "LNCAP_Normoxia")
+)
+
+# Create PC3-specific object
+pc3 <- generate_DESeq_object(
+  data_round, 
+  c("PC3_Hypoxia", "PC3_Normoxia")
+)
+
+# Perform variance stabilizing transformation
+lncap_vsd <- vst(lncap, blind = TRUE)
+pc3_vsd <- vst(pc3, blind = TRUE)
+```
+
+::: {.data-validation style="background-color: #fff3e0; padding: 15px; border-radius: 5px; margin: 15px 0;"}
+**Quality Control Checks:**
+1. Sample metadata correctly assigned
+2. Low-count genes filtered out
+3. Normalization factors calculated
+4. Design formula properly specified
+:::
+
+
+
+
+## 🔬 Analyzing Cell-Specific Responses
+
+Now we'll examine hypoxia response patterns within each cell line:
+
+### 📊 Visualizing Cell-Specific Expression Patterns
+
+We'll analyze the most variable genes in each cell line to understand their distinct responses to hypoxia:
+
+```{r cell_specific_heatmaps, eval=FALSE}
+# Generate LNCaP variable genes heatmap
+p4 <- variable_gene_heatmap(
+  lncap_vsd, 
+  num_genes = 30, 
+  annotation = annotation, 
+  title = "LNCaP Hypoxia Response Genes"
+)
+
+```
+
+```{r save_lncap_heatmap, echo=FALSE, eval=FALSE}
+# Save cell-specific heatmaps
+ggsave(
+  filename = "figures/LNCaP_variable_genes.pdf", 
+  plot = p4, 
+  width = 12, 
+  height = 8
+)
+ggsave(
+  filename = "images/LNCaP_variable_genes.png", 
+  plot = p4, 
+  width = 12, 
+  height = 8
+)
+
+```
+
+
+We observe that the LNCaP variable genes are enriched in genes that are specific to the LNCaP cell line, such as KLK3 (PSA) and KLK2. The PC3 variable genes are enriched in genes that are specific to the PC3 cell line, such as TMPRSS2 and SLC45A3.
+
+```{r heatmap, eval=FALSE}
+
+# Generate PC3 variable genes heatmap
+
+p5 <- variable_gene_heatmap(pc3_vsd, 30, annotation = annotation, title = "PC3 variable genes")
+p6 <- gridExtra::grid.arrange(p4[[4]],p5[[4]], nrow = 1)
+p6
+```
+
+
+```{r, echo=FALSE, eval=FALSE}
+
+ggsave(filename = "figures/PC3_variable_genes.pdf", plot = p5, width = 16, height = 12)
+ggsave(filename = "images/PC3_variable_genes.png", plot = p5, width = 16, height = 12)
+
+ggsave(filename = "figures/LNCaP_PC3_variable_genes.pdf", plot = p6, width = 16, height = 12)
+ggsave(filename = "images/LNCaP_PC3_variable_genes.png", plot = p6, width = 16, height = 12)
+```
+
+<div class="figure" style="text-align: center">
+<img src="images/LNCaP_PC3_variable_genes.png" alt="LNCaP_PC3_variable_genes" width="80%" />
+<p class="caption">**Figure 6:** LNCaP_PC3_variable_genes plot</p>
+</div>
+
+
+This is a vastly different set of genes than what was observed when we had samples from both cell lines combined. Our differential gene expression analysis should now yield a greater depth of genes for the comparison we care about: hypoxia vs normoxia.
+
+
+
+
+## 📊 Differential Expression Results
+
+Extract differentially expressed genes between hypoxia and normoxia conditions using DESeq2's `results()` function:
+
+```{r extract_de_results}
+results(lncap, contrast = c("condition", "LNCAP_Hypoxia", "LNCAP_Normoxia"))
+```
+
+
+```{r display_de_results}
+head(as.data.frame(results(lncap, contrast = c("condition", "LNCAP_Hypoxia", "LNCAP_Normoxia"))))
+```
+
+
+Key statistics from DESeq2 results:
+- `baseMean`: Overall gene expression level
+- `log2FoldChange`: Expression difference between conditions (negative = higher in normoxia)
+- `padj`: Adjusted p-value for significance
+
+Filtering criteria:
+1. Statistical significance: padj < cutoff
+2. Expression change: Sort by log2FoldChange
+3. Optional: Filter low-expressed genes using baseMean or CPM
+4. Generate ranked list (.rnk) for enrichment analysis
+
+Since there are many variations of sorting / filtering the data, I wrote the function `generate_DE_results()` to perform multiple filtering steps and provide output in the form of csv files. I export these files so they can be easily shared and interpreted by other bench scientists without having to read the data into R.
+
+```{r generate_de_function}
+generate_DE_results <- function (dds, comparisons, padjcutoff = 0.001, log2cutoff = 0.5, cpmcutoff = 2) {
+  # generate average counts per million metric from raw count data 
+  raw_counts <- counts(dds, normalized = F)
+  cpms <- enframe(rowMeans(edgeR::cpm(raw_counts)))
+  colnames(cpms) <- c("ensembl_id", "avg_cpm")
+  
+  # extract DESeq results between the comparisons indicated
+  res <- results(dds, contrast = c("condition", comparisons[1], comparisons[2]))[,-c(3,4)]
+  
+  # annotate the data with gene name and average counts per million value
+  res <- as_tibble(res, rownames = "ensembl_id")
+  # read in the annotation and append it to the data
+  my_annotation <- read.csv("reference_genomes/GRCh38.p14_annotation.csv", header = TRUE, stringsAsFactors = F)
+  res <- left_join(res, my_annotation, by = c("ensembl_id" = "Gene.stable.ID"))
+  # append the average cpm value to the results data
+  res <- left_join(res, cpms, by = c("ensembl_id" = "ensembl_id"))
+  
+  # combine normalized counts with entire DE list
+  normalized_counts <- round(counts(dds, normalized = TRUE),3)
+  pattern <- str_c(comparisons[1], "|", comparisons[2])
+  combined_data <- as_tibble(cbind(res, normalized_counts[,grep(pattern, colnames(normalized_counts))] ))
+  combined_data <- combined_data[order(combined_data$log2FoldChange, decreasing = TRUE),]
+  
+  # make ordered rank file for GSEA, selecting only protein coding genes
+  res_prot <- res[which(res$Gene.type == "protein_coding"),]
+  res_prot_ranked <- res_prot[order(res_prot$log2FoldChange, decreasing = TRUE),c("Gene.name", "log2FoldChange")]
+  res_prot_ranked <- na.omit(res_prot_ranked)
+  res_prot_ranked$Gene.name <- str_to_upper(res_prot_ranked$Gene.name)
+  
+  # generate sorted lists with the indicated cutoff values
+  res <- res[order(res$log2FoldChange, decreasing=TRUE ),]
+  de_genes_padj <- res[which(res$padj < padjcutoff),]
+  de_genes_log2f <- res[which(abs(res$log2FoldChange) > log2cutoff & res$padj < padjcutoff),]
+  de_genes_cpm <- res[which(res$avg_cpm > cpmcutoff & res$padj < padjcutoff),]
+  
+  # write output to files
+  write.csv (de_genes_padj, file = paste0("results/", comparisons[1], "_vs_", comparisons[2], "_padj_cutoff.csv"), row.names = FALSE)
+  write.csv (de_genes_log2f, file = paste0("results/", comparisons[1], "_vs_", comparisons[2], "_log2f_cutoff.csv"), row.names = FALSE)
+  write.csv (de_genes_cpm, file = paste0("results/", comparisons[1], "_vs_", comparisons[2], "_cpm_cutoff.csv"), row.names = FALSE)
+  write.csv (combined_data, file = paste0("results/", comparisons[1], "_vs_", comparisons[2], "_allgenes.csv"), row.names = FALSE)
+  write.table (res_prot_ranked, file = paste0("results/", comparisons[1], "_vs_", comparisons[2], "_rank.rnk"), sep = "\t", row.names = F, quote = F)
+  
+  writeLines( paste0("For the comparison: ", comparisons[1], "_vs_", comparisons[2], ", out of ", nrow(combined_data), " genes, there were: \n", 
+               nrow(de_genes_padj), " genes below padj ", padjcutoff, "\n",
+               nrow(de_genes_log2f), " genes below padj ", padjcutoff, " and above a log2FoldChange of ", log2cutoff, "\n",
+               nrow(de_genes_cpm), " genes below padj ", padjcutoff, " and above an avg cpm of ", cpmcutoff, "\n",
+               "Gene lists ordered by log2fchange with the cutoffs above have been generated.") )
+  gene_count <- tibble (cutoff_parameter = c("padj", "log2fc", "avg_cpm" ), 
+                        cutoff_value = c(padjcutoff, log2cutoff, cpmcutoff), 
+                        signif_genes = c(nrow(de_genes_padj), nrow(de_genes_log2f), nrow(de_genes_cpm)))
+  invisible(gene_count)
+}
+```
+<br>
+
+After running the function, the console should display the number of genes that passed each filtering critera:
+
+```{r run_de_function}
+lncap_output <- generate_DE_results (lncap, c("LNCAP_Hypoxia", "LNCAP_Normoxia"))
+pc3_output <- generate_DE_results(pc3, c("PC3_Hypoxia", "PC3_Normoxia"))
+```
+
+
+We should also see a set of csv files show up in the same folder as the R script. We can read in the output files with `read.csv()` and observe what the file structure is like:
+
+```{r read_de_results, eval=FALSE}
+res <- read.csv("results/LNCAP_Hypoxia_vs_LNCAP_Normoxia_allgenes.csv", header = TRUE)
+head(res)
+```
+
+
+The `_allgenes.csv` file will be used in the next section for visualizations. It is an aggregate of all the data we have curated so far: the `results()` output, the gene annotations, and the normalized counts for every gene. We can further organize/filter the data for the visualizations based on user preferences. The other csv files, such as `_padj_cutoff.csv`, can be distributed to researchers who are only interested in the gene lists.
+
+
+
+
+## 📊 Results Visualization
+
+Visualize differential expression results to examine:
+1. Expression patterns of specific genes
+2. Sample variability and top DEGs
+3. Distribution of up/down regulated genes
+4. Shared DEGs between comparisons 
+5. Pathway enrichment analysis
+
+### 📈 PlotCounts
+
+We are often interested in plotting the normalized counts for certain genes of interest, in order to get a sense of the spread of the data and how genes are expressed across each of the groups. This is especially of interest for genes that show up as differentially expressed in our DESeq2 results. A way to plot the normalized counts for each sample is by using the built-in `DESeq2::plotCounts()` function. However, this function leaves *a lot* to be desired. As an example, I plot the gene IGFBP1 (a hypoxia-inducible gene) using its Ensembl ID below.
+
+```{r plotcounts-1, eval=FALSE}
+
+plotCounts(dds, gene="ENSG00000146678", intgroup="condition")
+
+```
+<br>
+
+As you can see, the sample names aren't even all displayed if their names are too long. We can instead use ggplot2 to graph the data, by extracting the normalized counts using `returnData = TRUE`:
+
+```{r plotcounts-2, eval=FALSE}
+d <- plotCounts(dds, gene="ENSG00000146678", intgroup="condition", returnData=TRUE)
+
+p7 <- ggplot(d, aes(x=condition, y=count)) + 
+  geom_point(size = 10, position=position_jitter(w=0.4,h=0), aes (color = condition)) +   scale_y_log10(breaks=c(25,100,400))
+p7
+```
+```{r, echo=FALSE, eval=FALSE}
+ggsave(filename = "figures/ENSG00000146678.pdf", plot = p7, width = 16, height = 12)
+ggsave(filename = "images/ENSG00000146678.png", plot = p7, width = 16, height = 12)
+```
+
+<div class="figure" style="text-align: center">
+<img src="images/ENSG00000146678.png" alt="ENSG00000146678" width="80%" />
+<p class="caption">**Figure 7:** ENSG00000146678 plot </p>
+</div>
+
+
+However, this is still very frustrating to work with, since we have to input the Ensembl ID instead of a gene name. Researchers typically want to search by gene name, and this function forces us to look up the Ensembl ID each time. To solve this problem, I wrote my own function `plot_counts()` to accept either the gene name, Ensembl ID, or an index such as `which.min(res$padj)`. I also provide two ways to normalize the data: by counts per million (cpm) or using the built-in DESeq2 normalized counts.
+
+```{r plotcounts-3, eval=FALSE}
+plot_counts <- function (dds, gene, normalization = "DESeq2"){
+  # read in the annotation file
+  annotation <- read.csv("reference_genomes/GRCh38.p14_annotation.csv", header = TRUE, stringsAsFactors = F)
+  # obtain normalized data
+  if (normalization == "cpm") {
+    normalized_data <- cpm(counts(dds, normalized = F)) # normalize the raw data by counts per million
+  } else if (normalization == "DESeq2")
+    normalized_data <- counts(dds, normalized = TRUE) # use DESeq2 normalized counts
+  # get sample groups from colData
+  condition <- dds@colData$condition
+  # get the gene name from the ensembl id
+  if (is.numeric(gene)) { # check if an index is supplied or if ensembl_id is supplied
+    if (gene%%1==0 )
+      ensembl_id <- rownames(normalized_data)[gene]
+    else
+      stop("Invalid index supplied.")
+  } else if (gene %in% annotation$Gene.name){ # check if a gene name is supplied
+    ensembl_id <- annotation$Gene.stable.ID[which(annotation$Gene.name == gene)]
+  } else if (gene %in% annotation$Gene.stable.ID){
+    ensembl_id <- gene
+  } else {
+    stop("Gene not found. Check spelling.")
+  }
+  expression <- normalized_data[ensembl_id,]
+  gene_name <- annotation$Gene.name[which(annotation$Gene.stable.ID == ensembl_id)]
+  # construct a tibble with the grouping and expression
+  gene_tib <- tibble(condition = condition, expression = expression)
+  ggplot(gene_tib, aes(x = condition, y = expression))+
+    geom_boxplot(aes(fill = condition), outlier.size = NULL)+
+    geom_point(aes(color = condition))+
+    labs (title = paste0("Expression of ", gene_name, " - ", ensembl_id), x = "group", y = paste0("Normalized expression (", normalization , ")"))+
+    theme(axis.text.x = element_text(size = 11), axis.text.y = element_text(size = 11))
+}
+
+p8 <- plot_counts(dds, "IGFBP1")
+p8
+```
+```{r, echo=FALSE, eval=FALSE}
+ggsave(filename = "figures/IGFBP1_plot_counts.pdf", plot = p8, width = 16, height = 12)
+ggsave(filename = "images/IGFBP1_plot_counts.png", plot = p8, width = 16, height = 12)
+```
+
+<div class="figure" style="text-align: center">
+<img src="images/IGFBP1_plot_counts.png" alt="plot_counts" width="80%" />
+<p class="caption">**Figure 8:** plot_counts</p>
+</div>
+
+
+We observe that IGFBP1 is elevated in the the hypoxia conditions relative to the respective normoxia controls. Interestingly, the upregulation of IGFBP1 is much higher in PC3 cells than in LNCaP cells. This is a nice example of how this plot is useful to determine relative expression levels between samples.
+
+### 🌡️ Differential gene heatmap
+
+The most common heatmap used to display RNA-seq results is the differential gene heatmap. This is a heatmap where the normalized values for each sample are plotted for the top most upregulated genes which are significantly different between the comparison groups. Starting from the results object, we first filter the results by `padj` and then take the genes which have the greatest `log2FoldChange` value. The normalized counts for each gene is scaled by row (across samples) in order to emphasize the difference between the comparison groups (hypoxia vs normoxia). The purpose of this visualization is to give a sense of how variable the data are from sample to sample, as well as to quickly examine the top differential genes. I wrote the function `DE_gene_heatmap()` to generate this plot, using `pheatmap::pheatmap()` with the `scale = "row"` argument.
+
+```{r read-csv-1, eval=FALSE}
+res <- read.csv ("results/LNCAP_Hypoxia_vs_LNCAP_Normoxia_allgenes.csv", header = TRUE)
+
+DE_gene_heatmap <- function(res, padj_cutoff = 0.0001, ngenes = 20) {
+  # generate the color palette
+  brewer_palette <- "RdBu"
+  ramp <- colorRampPalette(RColorBrewer::brewer.pal(11, brewer_palette))
+  mr <- ramp(256)[256:1]
+  # obtain the significant genes and order by log2FoldChange
+  significant_genes <- res %>% filter(padj < padj_cutoff) %>% arrange (desc(log2FoldChange)) %>% head (ngenes)
+  heatmap_values <- as.matrix(significant_genes[,-c(1:8)])
+  rownames(heatmap_values) <- significant_genes$Gene.name
+  # plot the heatmap using pheatmap
+  pheatmap::pheatmap(heatmap_values, color = mr, scale = "row", fontsize_col = 12, fontsize_row = 200/ngenes, fontsize = 5, border_color = NA)
+}
+p9 <- DE_gene_heatmap(res, 0.001, 30)
+p9
+```
+```{r, echo=FALSE, eval=FALSE}
+ggsave(filename = "figures/DE_gene_heatmap.pdf", plot = p9, width = 16, height = 12)
+ggsave(filename = "images/DE_gene_heatmap.png", plot = p9, width = 16, height = 12)
+```
+
+<div class="figure" style="text-align: center">
+<img src="images/DE_gene_heatmap.jpg" alt="DE_gene_heatmap" width="80%" />
+<p class="caption">**Figure 9:** DE_gene_heatmap plot</p>
+</div>
+
+
+We observe that expression of the differential genes is very consistent within groups. We are also able to identify that LNCAP_Hypoxia_S1 has higher expression of the top \~10 genes than LNCAP_Hypoxia_S2.
+
+### 🌋 Volcano Plot Analysis
+
+The volcano plot is a powerful visualization that combines statistical significance with magnitude of change, allowing us to identify genes with both large fold changes and high statistical confidence. In this plot:
+
+- X-axis: `log2FoldChange` shows the magnitude and direction of expression changes
+- Y-axis: `-log10(padj)` represents statistical significance
+- Each point represents one gene
+- Upregulated genes appear on the right side (positive log2FC)
+- Downregulated genes appear on the left side (negative log2FC)
+- Higher points indicate greater statistical significance
+
+::: {.analysis-note style="background-color: #e8f5e9; padding: 15px; border-radius: 5px; margin: 15px 0;"}
+**Interpretation Guide:**
+1. **Top right quadrant**: Significantly upregulated genes (high fold change, low p-value)
+2. **Top left quadrant**: Significantly downregulated genes (negative fold change, low p-value)
+3. **Center/bottom**: Genes with minimal changes or insufficient statistical confidence
+:::
+
+Let's create an enhanced volcano plot for the LNCaP hypoxia vs normoxia comparison:
+
+```{r read-csv-2, eval=FALSE}
+# Read the results file
+res <- read.csv("results/LNCAP_Hypoxia_vs_LNCAP_Normoxia_allgenes.csv", header = TRUE)
+
+plot_volcano <- function(res, padj_cutoff = 0.05, fc_cutoff = 1, nlabel = 10, label.by = "padj") {
+  # Create significance categories
+  res <- res %>%
+    mutate(
+      expression = case_when(
+        log2FoldChange >= fc_cutoff & padj < padj_cutoff ~ "Upregulated",
+        log2FoldChange <= -fc_cutoff & padj < padj_cutoff ~ "Downregulated",
+        TRUE ~ "Not Significant"
+      )
+    ) %>%
+    filter(!is.na(padj))  # Remove NA values
+    
+  # Prepare genes for labeling
+  if (label.by == "padj") {
+    up_genes <- res %>% 
+      filter(expression == "Upregulated") %>% 
+      arrange(padj) %>% 
+      head(nlabel)
+    down_genes <- res %>% 
+      filter(expression == "Downregulated") %>% 
+      arrange(padj) %>% 
+      head(nlabel)
+  } else if (label.by == "log2FoldChange") {
+    up_genes <- res %>% 
+      filter(expression == "Upregulated") %>% 
+      arrange(desc(abs(log2FoldChange))) %>% 
+      head(nlabel)
+    down_genes <- res %>% 
+      filter(expression == "Downregulated") %>% 
+      arrange(desc(abs(log2FoldChange))) %>% 
+      head(nlabel)
+  }
+  
+  # Generate statistics for title
+  stats <- list(
+    total = nrow(res),
+    up = sum(res$expression == "Upregulated"),
+    down = sum(res$expression == "Downregulated")
+  )
+  
+  # Create enhanced volcano plot
+  ggplot(res, aes(x = log2FoldChange, y = -log10(padj))) +
+    # Add points
+    geom_point(aes(color = expression), alpha = 0.7, size = 1) +
+    # Color scheme
+    scale_color_manual(
+      values = c(
+        "Upregulated" = "#fc8d59",
+        "Downregulated" = "#91bfdb",
+        "Not Significant" = "grey80"
+      )
+    ) +
+    # Add gene labels with repulsion
+    ggrepel::geom_text_repel(
+      data = up_genes,
+      aes(label = Gene.name),
+      size = 3,
+      color = "#d73027",
+      max.overlaps = Inf,
+      box.padding = 0.5
+    ) +
+    ggrepel::geom_text_repel(
+      data = down_genes,
+      aes(label = Gene.name),
+      size = 3,
+      color = "#4575b4",
+      max.overlaps = Inf,
+      box.padding = 0.5
+    ) +
+    # Add threshold lines
+    geom_vline(xintercept = c(-fc_cutoff, fc_cutoff), linetype = "dashed", color = "grey50", alpha = 0.5) +
+    geom_hline(yintercept = -log10(padj_cutoff), linetype = "dashed", color = "grey50", alpha = 0.5) +
+    # Customize theme
+    theme_minimal() +
+    theme(
+      legend.position = "right",
+      panel.grid.minor = element_blank(),
+      plot.title = element_text(size = 12),
+      plot.subtitle = element_text(size = 10)
+    ) +
+    # Add labels
+    labs(
+      title = "Differential Expression Analysis",
+      subtitle = sprintf("Total: %d genes | Up: %d | Down: %d (padj < %.2g, |log2FC| > %.1f)",
+                        stats$total, stats$up, stats$down, padj_cutoff, fc_cutoff),
+      x = "log2 Fold Change",
+      y = "-log10(adjusted p-value)",
+      color = "Expression Change"
+    )
+}
+
+# Generate volcano plots with different thresholds and labeling strategies
+# 1. Default stringent analysis
+p10 <- plot_volcano(res, 
+                   padj_cutoff = 0.001,  # Stringent significance threshold
+                   fc_cutoff = 1.5,      # Require at least 2.8-fold change
+                   nlabel = 10,          # Label top 10 genes
+                   label.by = "padj")    # Label most significant genes
+p10
+
+```
+```{r, echo=FALSE, eval=FALSE}
+ggsave(filename = "figures/Volcano_plot_stringent.pdf", plot = p10, width = 12, height = 10)
+ggsave(filename = "images/Volcano_plot_stringent.png", plot = p10, width = 12, height = 10)
+```
+
+<div class="figure" style="text-align: center">
+<img src="images/Volcano_plot_stringent.png" alt="Volcano_plot_stringent" width="80%" />
+<p class="caption">**Figure 10:** Volcano plot_1(padj_cutoff = 0.001)</p>
+</div>
+
+
+```{r plot-volcano-1, eval=FALSE}
+# 2. Alternative analysis focusing on fold change
+p11 <- plot_volcano(res, 
+                   padj_cutoff = 0.05,   # More permissive significance
+                   fc_cutoff = 2,        # Focus on genes with larger changes
+                   nlabel = 15,          # Label more genes
+                   label.by = "log2FoldChange")  # Label genes with largest changes
+p11
+```
+```{r, echo=FALSE, eval=FALSE}
+ggsave(filename = "figures/Volcano_plot.pdf", plot = p11, width = 12, height = 10)
+ggsave(filename = "images/Volcano_plot.png", plot = p11, width = 12, height = 10)
+```
+
+<div class="figure" style="text-align: center">
+<img src="images/Volcano_plot.png" alt="Volcano_plot" width="80%" />
+<p class="caption">**Figure 11:** Volcano plot_2(padj_cutoff = 0.05) </p>
+</div>
+
+### 🌋 Enhanced volcano plots[@RN16]
+
+```{r plot-volcano-2, eval=FALSE}
+
+# Create a column for gene names from the rownames
+res$gene_names <- res$Gene.name
+
+# Sort the results by padj and then by log2FoldChange
+# This is a good way to find the most significant and most-changed genes
+sorted_res <- res[order(res$padj, abs(res$log2FoldChange), decreasing = c(FALSE, TRUE)), ]
+
+# Filter for significantly upregulated genes
+top_up_genes <- subset(sorted_res, log2FoldChange > 2 & padj < 0.05)
+
+# Filter for significantly downregulated genes
+top_down_genes <- subset(sorted_res, log2FoldChange < -2 & padj < 0.05)
+
+# Select the top 10 gene names from each list
+select_lab_list <- c(head(top_up_genes, 10)$gene_names, head(top_down_genes, 10)$gene_names)
+
+# Create the enhanced volcano plot
+p13 <- EnhancedVolcano(res,
+                        lab = res$gene_name, # Use the column with gene names
+                        x = 'log2FoldChange',
+                        y = 'padj',
+                        ylab = bquote(~-Log[10] ~ italic(FDR)),
+                        pCutoff = 0.05,
+                        FCcutoff = 2,
+                        selectLab = select_lab_list, # Add this line
+                        legendLabels=c('Not DE &\nabsolute FC < 2',
+                        'Not DE &\nabsolute FC > 2',
+                        'FDR < 0.05 &\nabsolute FC < 2',
+                        'FDR < 0.05 &\nabsolute FC > 2'
+                        ),
+                        legendPosition = 'right')
+
+p13
+```
+```{r, echo=FALSE, eval=FALSE}
+ggsave(filename = paste0("figures/Volcanoplot-enhanced.pdf"), plot=p10, width = 12, height = 7)
+ggsave(filename = paste0("images/Volcanoplot-enhanced.png"), plot=p10, width = 12, height = 7)
+
+```
+
+<div class="figure" style="text-align: center">
+<img src="images/Volcanoplot-enhanced.png" alt="Volcanoplot-enhanced" width="80%" />
+<p class="caption">**Figure 12:** Volcanoplot-enhanced</p>
+</div>
+
+
+The downregulated genes are labeled in a different color compared to the upregulated genes. We observe that there are a lot more significantly upregulated genes than there are downregulated genes. Given that we are looking for gene expression changes in cells grown in hypoxic conditions compared to normoxic conditions, this suggests that cells may be ramping up transcription of response pathways.
+
+
+
+
+::: {.visualization-notes style="background-color: #fff8e1; padding: 15px; border-radius: 5px; margin: 15px 0;"}
+**Key Findings from Volcano Analysis:**
+
+1. **Stringent Analysis (p10):**
+   - Focuses on high-confidence changes (padj < 0.001)
+   - Reveals core hypoxia response genes
+   - Highlights most statistically significant changes
+
+2. **Fold Change Analysis (p11):**
+   - Captures broader expression changes
+   - Identifies genes with dramatic expression shifts
+   - May reveal biologically relevant genes with larger variance
+:::
+
+
+
+### 💾 Save processed results for further analysis
+```{r save_res_processed, eval=FALSE}
+# Save results with detailed categorization
+res_processed <- res %>%
+  mutate(
+    expression_category = case_when(
+      log2FoldChange >= 2 & padj <= 0.001 ~ "Strongly Upregulated",
+      log2FoldChange >= 1 & padj <= 0.05 ~ "Upregulated",
+      log2FoldChange <= -2 & padj <= 0.001 ~ "Strongly Downregulated",
+      log2FoldChange <= -1 & padj <= 0.05 ~ "Downregulated",
+      TRUE ~ "Not Significant"
+    )
+  )
+
+# Save results for downstream analysis
+saveRDS(res_processed, "results/processed_differential_expression.rds")
+write.csv(res_processed, "results/processed_differential_expression.csv", row.names = FALSE)
+```
+<br>
+
+## 📈 LogFoldChange comparison plot
+
+Given that we have performed differential gene expression analysis on two different cell lines, we would like to compare the two lines in terms of how their gene expression responds to hypoxia. We want to answer questions such as:
+
+1.  Are the genes that are induced by hypoxia similar in both cell lines?
+2.  Which significant genes are shared by both cell lines and which genes are unique to each cell line?
+
+To do so, we can take the significant genes from the hypoxia vs normoxia comparison for both lines and generate a scatterplot of their `log2FoldChange` values using the custom function below, `compare_significant_genes()`. This function will display the overlap in the gene lists by color coding significant genes that are shared by both cell lines, as well as those that are unique to each individual cell line.
+
+```{r compare_significant_genes, eval=FALSE}
+res1 <- read.csv ("results/LNCAP_Hypoxia_vs_LNCAP_Normoxia_allgenes.csv", header = TRUE)
+res2 <- read.csv ("results/PC3_Hypoxia_vs_PC3_Normoxia_allgenes.csv", header = TRUE)
+
+compare_significant_genes <- function (res1, res2, padj_cutoff=0.0001, ngenes=250, nlabel=10, samplenames=c("comparison1", "comparison2"), title = "" ) {
+  # get list of most upregulated or downregulated genes for each results table
+  genes1 <- rbind(head(res1[which(res1$padj < padj_cutoff),], ngenes), tail(res1[which(res1$padj < padj_cutoff),], ngenes))
+  genes2 <- rbind(head(res2[which(res2$padj < padj_cutoff),], ngenes), tail(res2[which(res2$padj < padj_cutoff),], ngenes))
+ 
+   # combine the data from both tables
+  de_union <- union(genes1$ensembl_id,genes2$ensembl_id)
+  res1_union <- res1[match(de_union, res1$ensembl_id),][c("ensembl_id", "log2FoldChange", "Gene.name")]
+  res2_union <- res2[match(de_union, res2$ensembl_id),][c("ensembl_id", "log2FoldChange", "Gene.name")]
+  combined <- left_join(res1_union, res2_union, by = "ensembl_id", suffix = samplenames )
+  
+  # identify overlap between genes in both tables
+  combined$de_condition <- 1 # makes a placeholder column
+  combined$de_condition[which(combined$ensembl_id %in% intersect(genes1$ensembl_id,genes2$ensembl_id))] <- "Significant in Both"
+  combined$de_condition[which(combined$ensembl_id %in% setdiff(genes1$ensembl_id,genes2$ensembl_id))] <- paste0("Significant in ", samplenames[1])
+  combined$de_condition[which(combined$ensembl_id %in% setdiff(genes2$ensembl_id,genes1$ensembl_id))] <- paste0("Significant in ", samplenames[2])
+  combined[is.na(combined)] <- 0
+  
+  # find the top most genes within each condition to label on the graph
+  label1 <- rbind(head(combined[which(combined$de_condition==paste0("Significant in ", samplenames[1])),],nlabel),
+                  tail(combined[which(combined$de_condition==paste0("Significant in ", samplenames[1])),],nlabel))
+  label2 <- rbind(head(combined[which(combined$de_condition==paste0("Significant in ", samplenames[2])),],nlabel),
+                  tail(combined[which(combined$de_condition==paste0("Significant in ", samplenames[2])),],nlabel))
+  label3 <- rbind(head(combined[which(combined$de_condition=="Significant in Both"),],nlabel),
+                  tail(combined[which(combined$de_condition=="Significant in Both"),],nlabel))
+  combined_labels <- rbind(label1,label2,label3)
+  
+  # plot the genes based on log2FoldChange, color coded by significance
+  ggplot(combined, aes_string(x = paste0("log2FoldChange", samplenames[1]), y = paste0("log2FoldChange", samplenames[2]) )) +
+      geom_point(aes(color = de_condition), size = 0.7)+
+      scale_color_manual(values= c("#00BA38", "#619CFF", "#F8766D", "red"))+
+      ggrepel::geom_text_repel(data= combined_labels, aes_string(label=paste0("Gene.name", samplenames[1]), color = "de_condition"), show.legend = F, size=3)+
+      geom_vline(xintercept = c(0,0), size = 0.3, linetype = 2)+ 
+      geom_hline(yintercept = c(0,0), size = 0.3, linetype = 2)+
+      labs(title = title,x = paste0("log2FoldChange in ", samplenames[1]), y = paste0("log2FoldChange in ", samplenames[2]))+
+      theme_minimal()+
+      theme(legend.title = element_blank())
+}
+
+p14 <- compare_significant_genes(res1,res2, samplenames = c("LNCaP", "PC3"), title = "Hypoxia-induced gene expression differences in LNCaP vs PC3 cells") 
+p14
+```
+```{r, echo=FALSE, eval=FALSE}
+ggsave(filename = "figures/compare_significant_genes.pdf", plot = p14, width = 16, height = 12)
+ggsave(filename = "images/compare_significant_genes.png", plot = p14, width = 16, height = 12)
+```
+
+<div class="figure" style="text-align: center">
+<img src="images/compare_significant_genes.png" alt="compare_significant_genes" width="80%" />
+<p class="caption">**Figure 14:** compare_significant_genes plot</p>
+</div>
+<br>
+
+Only a small subset of genes are differentially expressed in both LNCaP and PC3 (green labels), mostly along the x = y diagonal (e.g., CA9, IGFBP5, STC1, PPFIA4), indicating a shared hypoxia response. Genes significant in only one line cluster on the axes, suggesting cell line–specific effects.
+
+
+
+
+# 🔬 Functional Enrichment Analysis
+
+## 🎯 Pathway Analysis Strategy
+
+To understand the biological significance of the differential expression patterns, we'll perform a comprehensive functional enrichment analysis using multiple approaches:
+
+::: {.analysis-strategy style="background-color: #e8f5e9; padding: 15px; border-radius: 5px; margin: 15px 0;"}
+**Multi-level Analysis Approach:**
+
+1. **Gene Set Enrichment Analysis (GSEA)**
+   - Analyze entire ranked gene lists
+   - Capture subtle but coordinated changes
+   - Compare cell-line specific patterns
+
+2. **Over-representation Analysis (ORA)**
+   - Focus on significantly changed genes
+   - Identify enriched pathways and processes
+   - Compare shared vs unique pathways
+
+3. **Network Analysis**
+   - Visualize pathway interactions
+   - Identify key regulatory hubs
+   - Map cell-line specific networks
+:::
+
+
+
+
+## 📊 Gene Set Enrichment Analysis {#GSEA}
+
+GSEA provides a powerful way to identify coordinated gene expression changes at the pathway level[@RN17]. We'll analyze both cell lines to understand shared and unique pathway responses to hypoxia.
+
+We need to download the pathway files from the GSEA MSigDB webpage at: <https://www.gsea-msigdb.org/gsea/msigdb/collections.jsp> and load them in using `fgsea::gmtPathways()`. I will be working with the HALLMARK pathway set.
+
+```{r load-pathways}
+library(fgsea)
+# read in file containing lists of genes for each pathway
+hallmark_pathway <- gmtPathways("reference_genomes/h.all.v2024.1.Hs.symbols.gmt.txt")
+head(names(hallmark_pathway))
+```
+<br>
+
+🔍 The pathway file is loaded as a list of gene sets. We can access the genes for each pathway by selecting the pathway name using `$`:
+
+```{r patheaway-genes}
+head(hallmark_pathway$HALLMARK_HYPOXIA, 20)
+```
+
+
+After loading the pathways, we have to turn our ranked list into a vector, in which the `log2FoldChange` value is named with the gene name. We also need to get rid of any NA values or duplicate gene entries. The custom function `prepare_ranked_list()` will perform these operations.
+
+```{r load-ranked-list}
+# load the ranked list
+lncap_ranked_list <- read.table("results/LNCAP_Hypoxia_vs_LNCAP_Normoxia_rank_2.rnk", header = TRUE, stringsAsFactors = F)
+head(lncap_ranked_list)
+```
+
+```{r prepare-ranked-list}
+# formats the ranked list for the fgsea() function
+prepare_ranked_list <- function(ranked_list) { 
+  # if duplicate gene names present, average the values
+  if( sum(duplicated(ranked_list$Gene.name)) > 0) {
+    ranked_list <- aggregate(.~Gene.name, FUN = mean, data = ranked_list)
+    ranked_list <- ranked_list[order(ranked_list$log2FoldChange, decreasing = TRUE),]
+  }
+  # omit rows with NA values
+  ranked_list <- na.omit(ranked_list)
+  # turn the dataframe into a named vector
+  ranked_list <- tibble::deframe(ranked_list)
+  ranked_list
+}
+
+lncap_ranked_list <- prepare_ranked_list(lncap_ranked_list)
+head(lncap_ranked_list)
+```
+
+
+Now that we have the named vector, we can plug it into the `fgsea()` function along with the hallmark pathways object. This will generate a table of results containing the enrichment scores associated with each pathway.
+
+```{r fgsea_results}
+# generate GSEA results table using fgsea() by inputting the pathway list and ranked list
+fgsea_results <- fgsea(pathways = hallmark_pathway,
+                  stats = lncap_ranked_list,
+                  minSize = 15,
+                  maxSize = 500,
+                  nperm= 1000)
+
+fgsea_results %>% arrange (desc(NES)) %>% dplyr::select (pathway, padj, NES) %>% head()
+```
+
+
+The normalized enrichment scores (NES) tell us how much more enriched the pathway is in the hypoxia samples compared to the normoxia samples. As expected, we observe that the most enriched pathway in response to hypoxia is the HALLMARK_HYPOXIA pathway.
+
+We can visualize the statistics for each pathway using a "waterfall" plot, which is a sideways bar plot of normalized enrichment scores for each of the pathways, color-coded by significance. This plot is great for quickly identifying the significantly enriched pathways.
+
+```{r waterfall-plot, eval=FALSE}
+waterfall_plot <- function (fsgea_results, graph_title) {
+  fgsea_results %>% 
+    mutate(short_name = str_split_fixed(pathway, "_",2)[,2])%>% # removes 'HALLMARK_' from the pathway title 
+    ggplot( aes(reorder(short_name,NES), NES)) +
+      geom_bar(stat= "identity", aes(fill = padj<0.05))+
+      coord_flip()+
+      labs(x = "Hallmark Pathway", y = "Normalized Enrichment Score", title = graph_title)+
+      theme(axis.text.y = element_text(size = 7), 
+            plot.title = element_text(hjust = 1))
+}
+
+p15 <- waterfall_plot(fgsea_results, "Hallmark pathways altered by hypoxia in LNCaP cells")
+p15
+```
+```{r, echo=FALSE, eval=FALSE}
+ggsave(filename = "figures/waterfall_plot.pdf", plot = p15, width = 16, height = 12)
+ggsave(filename = "images/waterfall_plot.png", plot = p15, width = 16, height = 12)
+```
+
+<div class="figure" style="text-align: center">
+<img src="images/waterfall_plot.png" alt="waterfall_plot" width="80%" />
+<p class="caption">**Figure 15:** Waterfall plot</p>
+</div>
+
+
+
+🔬 Besides hypoxia, androgen response and MTORC1 signaling are also enriched under hypoxic conditions. Glycolysis is upregulated, while oxidative phosphorylation is downregulated, suggesting a metabolic shift similar to the Warburg effect. This may indicate hypoxia drives the switch from oxidative phosphorylation to glycolysis in tumors.
+
+Interferon response pathways are negatively enriched in hypoxia, implying reduced interferon responsiveness, which is unexpected given the in vitro setting.
+
+We can highlight specific pathways by plotting enrichment curves with `fgsea::plotEnrichment()`. Black ticks mark pathway genes; the green curve shows enrichment for hypoxia (left) or normoxia (right). Example curves are shown below.
+
+```{r enrichment_plot_1, eval=FALSE}
+# wrapper for fgsea::plotEnrichment()
+plot_enrichment <- function (geneset, pathway, ranked_list) {
+  plotEnrichment(geneset[[pathway]], ranked_list)+labs (title = pathway)
+}
+# example of positively enriched pathway (up in Hypoxia)
+p16 <- plot_enrichment(hallmark_pathway, "HALLMARK_GLYCOLYSIS" , lncap_ranked_list)
+p16
+```
+```{r, echo=FALSE, eval=FALSE}
+ggsave(filename = "figures/HALLMARK_GLYCOLYSIS.pdf", plot = p16, width = 16, height = 12)
+ggsave(filename = "images/HALLMARK_GLYCOLYSIS.png", plot = p16, width = 16, height = 12)
+```
+
+<div class="figure" style="text-align: center">
+<img src="images/HALLMARK_GLYCOLYSIS.png" alt="HALLMARK_GLYCOLYSIS" width="80%" />
+<p class="caption">**Figure 16:** Enrichment plot</p>
+</div>
+
+
+
+```{r enrichment_plot_2, eval=FALSE}
+# example of negatively enriched pathway (down in Hypoxia)
+p17 <- plot_enrichment(hallmark_pathway, "HALLMARK_OXIDATIVE_PHOSPHORYLATION" , lncap_ranked_list)
+p17
+```
+```{r, echo=FALSE, eval=FALSE}
+ggsave(filename = "figures/HALLMARK_OXIDATIVE_PHOSPHORYLATION.pdf", plot = p17, width = 16, height = 12)
+ggsave(filename = "images/HALLMARK_OXIDATIVE_PHOSPHORYLATION.png", plot = p17, width = 16, height = 12)
+```
+
+<div class="figure" style="text-align: center">
+<img src="images/HALLMARK_OXIDATIVE_PHOSPHORYLATION.png" alt="HALLMARK_OXIDATIVE_PHOSPHORYLATION" width="80%" />
+<p class="caption">**Figure 17:** Enrichment plot </p>
+</div>
+
+
+## 📊 Downstream analysis with R
+
+Gene Set Enrichment Analysis (GSEA) is a sophisticated computational method that evaluates whether pre-defined groups of genes (such as those associated with specific GO terms or KEGG pathways) exhibit statistically significant, coordinated expression changes between different biological conditions. Unlike traditional single-gene analyses, GSEA considers the entire ranked list of genes to identify biological pathways and processes that are systematically altered in the experimental condition.
+
+This section demonstrates the implementation of GSEA using the clusterProfiler package[@RN9], a versatile R package that provides comprehensive tools for statistical analysis and visualization of functional profiles for genes and gene clusters. For detailed documentation and advanced usage, please refer to: https://bioconductor.org/packages/release/bioc/vignettes/clusterProfiler/inst/doc/clusterProfiler.html
+
+### 📥 Prepare Input
+
+```{r prepare-enrich-input }
+# reading in data from deseq2
+df = read.csv("results/res_2.csv")
+# df = read.csv("data/drosphila_example_de.csv", header=TRUE)
+# we want the log2 fold change 
+original_gene_list <- df$log2FoldChange
+# name the vector
+names(original_gene_list) <- df$ensembl_id
+# omit any NA values 
+gene_list<-na.omit(original_gene_list)
+
+# sort the list in decreasing order (required for clusterProfiler)
+gene_list = sort(gene_list, decreasing = TRUE)
+head(gene_list)
+```
+
+
+### 🔍 Gene Set Enrichment
+**Parameters:**
+- `keyType`: Source of gene IDs (e.g., "ENTREZID", "ENSEMBL", "SYMBOL"). Check available options with `keytypes(org.Dm.eg.db)`.
+- `ont`: Ontology; one of "BP", "MF", "CC", or "ALL".
+- `nPerm`: Number of permutations (higher = more accurate, slower).
+- `minGSSize`/`maxGSSize`: Minimum/maximum gene set size to include.
+- `pvalueCutoff`: P-value threshold.
+- `pAdjustMethod`: Adjustment method (e.g., "BH", "bonferroni").
+```{r gseGO, eval=FALSE}
+# library(org.Dm.eg.db)
+gse <- clusterProfiler::gseGO(geneList=gene_list, 
+             ont ="ALL", 
+             keyType = "ENSEMBL", 
+             nPerm = 10000, 
+             minGSSize = 3, 
+             maxGSSize = 800, 
+             pvalueCutoff = 0.05, 
+             verbose = TRUE, 
+             OrgDb = org.Hs.eg.db, 
+             pAdjustMethod = "none")
+```
+<br>
+
+
+
+## Dotplot
+
+```{r enrich_dotplot, eval=FALSE}
+require(DOSE)
+p18 <- enrichplot::dotplot(gse, showCategory=10, split=".sign") + facet_grid(.~.sign) + scale_size(range = c(1, 8)) # Change the dot size range
+p18
+```
+```{r, echo=FALSE, eval=FALSE}
+ggsave(filename = "figures/gse_dotplot.pdf", plot = p18, width = 16, height = 12)
+ggsave(filename = "images/gse_dotplot.png", plot = p18, width = 16, height = 12)
+```
+
+<div class="figure" style="text-align: center">
+<img src="images/gse_dotplot.png" alt="gse_dotplot" width="80%" />
+<p class="caption">**Figure 18:** Dotplot</p>
+</div>
+
+
+
+### 🗺️ Enrichment Map:
+
+Enrichment map organizes enriched terms into a network with edges connecting overlapping gene sets. In this way, mutually overlapping gene sets are tend to cluster together, making it easy to identify functional modules.
+
+```{r pairwise_termsim, eval=FALSE }
+
+### apply 'pairwise_termsim' before making plots
+## calculate the similarity matrix for all gene sets, and not the top 200!
+## note that this takes some time
+gse_2 <- pairwise_termsim(gse, showCategory = dim(gse)[1] )
+
+## Extract the gene sets. These are the 20 sets that are in the dotplot (10 activated, 10 supressed).
+geneSets2plot <- p17$data$Description
+
+## make a emapplot showing only the selected gene sets
+
+p19 <- enrichplot::emapplot(gse_2, showCategory=geneSets2plot)
+p19
+```
+```{r, echo=FALSE, eval=FALSE}
+ggsave(filename = "figures/gse_emapplot.pdf", plot = p19, width = 16, height = 12)
+ggsave(filename = "images/gse_emapplot.png", plot = p19, width = 16, height = 12)
+```
+
+<div class="figure" style="text-align: center">
+<img src="images/gse_emapplot.png" alt="gse_emapplot" width="80%" />
+<p class="caption">**Figure 19:** Enrichment map</p>
+</div>
+
+
+### 🌳 Tree plot
+
+The treeplot() function performs hierarchical clustering of enriched terms. It relies on the pairwise similarities of the enriched terms calculated by the pairwise_termsim() function, which by default using Jaccard’s similarity index (JC). Users can also use semantic similarity values if it is supported (e.g., GO, DO and MeSH).
+
+```{r treeplot, eval=FALSE}
+p20 <- treeplot(gse_2)
+p20
+```
+```{r, echo=FALSE, eval=FALSE}
+ggsave(filename = "figures/gse_treeplot.pdf", plot = p20, width = 16, height = 12)
+ggsave(filename = "images/gse_treeplot.png", plot = p20, width = 16, height = 12)
+```
+
+<div class="figure" style="text-align: center">
+<img src="images/gse_treeplot.png" alt="gse_treeplot" width="80%" />
+<p class="caption">**Figure 20:** Tree plot</p>
+</div>
+
+
+### 🕸️ Category Netplot
+
+The cnetplot depicts the linkages of genes and biological concepts (e.g. GO terms or KEGG pathways) as a network (helpful to see which genes are involved in enriched pathways and genes that may belong to multiple annotation categories).
+
+```{r cnetplot, eval=FALSE}
+# categorySize can be either 'pvalue' or 'geneNum'
+p21 <- cnetplot(gse, categorySize="pvalue", foldChange=gene_list, showCategory = 3)
+p21
+```
+```{r, echo=FALSE, eval=FALSE}
+ggsave(filename = "figures/gse_cnetplot.pdf", plot = p21, width = 16, height = 12)
+ggsave(filename = "images/gse_cnetplot.png", plot = p21, width = 16, height = 12)
+```
+
+<div class="figure" style="text-align: center">
+<img src="images/gse_cnetplot.png" alt="gse_cnetplot" width="80%" />
+<p class="caption">**Figure 21:** Category netplot</p>
+</div>
+
+
+### 📊 UpSet Plot
+
+The upsetplot is an alternative to cnetplot for visualizing the complex association between genes and gene sets. It emphasizes the gene overlapping among different gene sets.
+
+```{r upsetplot, eval=FALSE}
+p22 <- upsetplot(gse)
+p22
+```
+```{r, echo=FALSE, eval=FALSE}
+ggsave(filename = "figures/gse_upsetplot.pdf", plot = p22, width = 16, height = 12)
+ggsave(filename = "images/gse_upsetplot.png", plot = p22, width = 16, height = 12)
+```
+
+<div class="figure" style="text-align: center">
+<img src="images/gse_upsetplot.png" alt="gse_upsetplot" width="80%" />
+<p class="caption">**Figure 22:** UpSet plot</p>
+</div>
+
+
+### ⛰️ Ridgeplot
+
+Grouped by gene set, density plots are generated by using the frequency of fold change values per gene within each set. Helpful to interpret up/down-regulated pathways.
+
+```{r ridgeplot, eval=FALSE}
+p23 <- ridgeplot(gse) + labs(x = "enrichment distribution")
+p23
+```
+```{r, echo=FALSE, eval=FALSE}
+ggsave(filename = "figures/gse_ridgeplot.pdf", plot = p23, width = 16, height = 12)
+ggsave(filename = "images/gse_ridgeplot.png", plot = p23, width = 16, height = 12)
+```
+
+<div class="figure" style="text-align: center">
+<img src="images/gse_ridgeplot.png" alt="gse_ridgeplot" width="80%" />
+<p class="caption">**Figure 23:** Ridge plot</p>
+</div>
+
+
+### 📊 GSEA Plot
+Shows the running enrichment score for a gene set (green line), with the maximum score (red line) and gene set members (black lines) along the ranked gene list. The ranked metric (log2 fold change) reflects gene–phenotype correlation.
+
+**Parameter:**
+- `Gene Set Integer`: Index of the gene set in the `gse` object (1 = first gene set).
+
+```{r gseaplot, eval=FALSE}
+# Use the `Gene Set` param for the index in the title, and as the value for geneSetId
+p24 <- gseaplot(gse, by = "all", title = gse$Description[1], geneSetID = 1)
+p24
+```
+```{r, echo=FALSE, eval=FALSE}
+ggsave(filename = "figures/gse_gseaplot.pdf", plot = p24, width = 16, height = 12)
+ggsave(filename = "images/gse_gseaplot.png", plot = p24, width = 16, height = 12)
+```
+
+<div class="figure" style="text-align: center">
+<img src="images/gse_gseaplot.png" alt="gse_gseaplot" width="80%" />
+<p class="caption">**Figure 24:** GSEA plot</p>
+</div>
+
+
+### 📚 PubMed trend of enriched terms
+
+Plots the number/proportion of publications trend based on the query result from PubMed Central.
+
+```{r pmcplot, eval=FALSE}
+terms <- gse$Description[1:3]
+p25 <- pmcplot(terms, 2015:2024, proportion=FALSE)
+p25
+```
+```{r, echo=FALSE, eval=FALSE}
+ggsave(filename = "figures/gse_pmcplot.pdf", plot = p25, width = 16, height = 12)
+ggsave(filename = "images/gse_pmcplot.png", plot = p25, width = 16, height = 12)
+```
+
+<div class="figure" style="text-align: center">
+<img src="images/gse_pmcplot.png" alt="gse_pmcplot" width="80%" />
+<p class="caption">**Figure 25:** PubMed trend plot</p>
+</div>
+
+
+# 🧮 KEGG Gene Set Enrichment Analysis
+
+
+To run KEGG pathway enrichment with `gseKEGG()`, gene IDs must be converted using the `bitr` function from clusterProfiler. Some messages or warnings are normal.
+
+Set `fromType` in `bitr` to match the annotation source (same as `keyType` in `gseGO`). Set `toType` to one of: 'kegg', 'ncbi-geneid', 'ncib-proteinid', or 'uniprot'. For `org.Dm.eg.db`, use 'ENTREZID' (equivalent to 'ncbi-geneid').
+
+Use `original_gene_list` as the input for conversion.
+
+
+
+
+## 🔢 Prepare Input
+
+```{r prepare-kegg-input }
+# Convert gene IDs for gseKEGG function
+# We will lose some genes here because not all IDs will be converted
+ids<-clusterProfiler::bitr(names(original_gene_list), fromType = "ENSEMBL", toType = "ENTREZID", OrgDb=org.Hs.eg.db)
+ # remove duplicate IDS (here I use "ENSEMBL", but it should be whatever was selected as keyType)
+dedup_ids = ids[!duplicated(ids$ENSEMBL),]
+
+# Create a new dataframe df2 which has only the genes which were successfully mapped using the bitr function above
+df2 = df[df$ensembl_id %in% dedup_ids$ENSEMBL,]
+
+# Create a new column in df2 with the corresponding ENTREZ IDs
+df2$Y = dedup_ids$ENTREZID
+
+# Create a vector of the gene unuiverse
+kegg_gene_list <- df2$log2FoldChange
+
+# Name vector with ENTREZ ids
+names(kegg_gene_list) <- df2$Y
+
+# omit any NA values 
+kegg_gene_list<-na.omit(kegg_gene_list)
+
+# *******************************************
+kegg_gene_list <- kegg_gene_list[!duplicated(names(kegg_gene_list))]
+
+# sort the list in decreasing order (required for clusterProfiler)
+kegg_gene_list = sort(kegg_gene_list, decreasing = TRUE)
+```
+<br>
+
+
+
+## Create gseKEGG object
+
+- `organism`: 3-letter KEGG code (see: https://www.genome.jp/kegg/catalog/org_list.html). Define as `kegg_organism` for reuse.
+- `nPerm`: Number of permutations (higher = more accurate, slower).
+- `minGSSize`/`maxGSSize`: Minimum/maximum gene set size to include.
+- `pvalueCutoff`: P-value threshold.
+- `pAdjustMethod`: Adjustment method (e.g., "BH", "bonferroni").
+- `keyType`: One of 'kegg', 'ncbi-geneid', 'ncib-proteinid', or 'uniprot'.
+```{r gseKEGG, eval=FALSE}
+kegg_organism = "hsa"
+kk2 <- gseKEGG(geneList     = kegg_gene_list,
+               organism     = kegg_organism,
+               nPerm        = 10000,
+               minGSSize    = 3,
+               maxGSSize    = 800,
+               pvalueCutoff = 0.05,
+               pAdjustMethod = "none",
+               keyType       = "ncbi-geneid")
+```
+<br>
+
+
+
+
+## Dotplot
+
+```{r KEGG_dotplot, eval=FALSE}
+p26 <- dotplot(kk2, showCategory = 10, title = "Enriched Pathways" , split=".sign") + facet_grid(.~.sign) + scale_size(range = c(1, 8)) # Change the dot size range
+p26
+```
+```{r, echo=FALSE, eval=FALSE}
+ggsave(filename = "figures/KEGG_dotplot.pdf", plot = p26, width = 16, height = 12)
+ggsave(filename = "images/KEGG_dotplot.png", plot = p26, width = 16, height = 12)
+```
+
+<div class="figure" style="text-align: center">
+<img src="images/KEGG_dotplot.png" alt="KEGG_dotplot" width="80%" />
+<p class="caption">**Figure 26:** Dotplot</p>
+</div>
+
+
+## Encrichment map:
+Enrichment map organizes enriched terms into a network with edges connecting overlapping gene sets. In this way, mutually overlapping gene sets are tend to cluster together, making it easy to identify functional modules.
+```{r KEGG-pairwise, eval=FALSE}
+### apply 'pairwise_termsim' before making plots
+## calculate the similarity matrix for all gene sets, and not the top 200!
+## note that this takes some time
+kk3 <- pairwise_termsim(kk2, showCategory = dim(kk2)[1] )
+
+## Extract the gene sets. These are the 20 sets that are in the dotplot (10 activated, 10 supressed).
+geneSets2plot_2 <- p23$data$Description
+
+## make a emapplot showing only the selected gene sets
+
+p27 <- enrichplot::emapplot(kk3, showCategory=geneSets2plot_2)
+p27
+```
+```{r, echo=FALSE, eval=FALSE}
+ggsave(filename = "figures/KEGG_emapplot.pdf", plot = p27, width = 16, height = 12)
+ggsave(filename = "images/KEGG_emapplot.png", plot = p27, width = 16, height = 12)
+```
+
+<div class="figure" style="text-align: center">
+<img src="images/KEGG_emapplot.png" alt="KEGG_emapplot" width="80%" />
+<p class="caption">**Figure 27:** Enrichment map</p>
+</div>
+
+
+## Category Netplot
+The cnetplot shows connections between genes and biological categories (e.g., GO terms, KEGG pathways) as a network, highlighting shared genes across categories.
+```{r KEGG-cnetplot, eval=FALSE}
+# categorySize can be either 'pvalue' or 'geneNum'
+p28 <- cnetplot(kk2, categorySize="pvalue", foldChange=gene_list)
+p28
+```
+```{r, echo=FALSE, eval=FALSE}
+ggsave(filename = "figures/KEGG_cnetplot.pdf", plot = p28, width = 16, height = 12)
+ggsave(filename = "images/KEGG_cnetplot.png", plot = p28, width = 16, height = 12)
+```
+
+<div class="figure" style="text-align: center">
+<img src="images/KEGG_cnetplot.png" alt="KEGG_cnetplot" width="80%" />
+<p class="caption">**Figure 28:** Category netplot</p>
+</div>
+
+
+
+## Ridgeplot
+Helpful to interpret up/down-regulated pathways.
+```{r KEGG-ridge, eval=FALSE}
+p29 <- ridgeplot(kk2) + labs(x = "enrichment distribution")
+p29
+```
+```{r, echo=FALSE, eval=FALSE}
+ggsave(filename = "figures/KEGG_ridgeplot.pdf", plot = p29 width = 16, height = 12)
+ggsave(filename = "images/KEGG_ridgeplot.png", plot = p29, width = 16, height = 12)
+```
+
+<div class="figure" style="text-align: center">
+<img src="images/KEGG_ridgeplot.png" alt="KEGG_ridgeplot" width="80%" />
+<p class="caption">**Figure 29:** Ridge plot</p>
+</div>
+
+
+## GSEA Plot
+Standard visualization of GSEA results.
+
+**Parameter:**
+- `Gene Set Integer`: Index of the gene set in the `gse` object (1 = first gene set; default is 1).
+```{r KEGG-gseaplot, eval=FALSE}
+# Use the `Gene Set` param for the index in the title, and as the value for geneSetId
+p30 <- gseaplot(kk2, by = "all", title = kk2$Description[1], geneSetID = 1)
+p30
+```
+```{r, echo=FALSE, eval=FALSE}
+ggsave(filename = "figures/KEGG_gseaplot.pdf", plot = p30, width = 16, height = 12)
+ggsave(filename = "images/KEGG_gseaplot.png", plot = p30, width = 16, height = 12)
+```
+
+<div class="figure" style="text-align: center">
+<img src="images/KEGG_gseaplot.png" alt="KEGG_gseaplot" width="80%" />
+<p class="caption">**Figure 30:** GSEA plot</p>
+</div>
+
+
+
+## KEGG Pathway Visualization with Pathview[@RN19]
+Pathview visualizes gene expression on KEGG pathways, outputting PNG (native layout) and PDF (publication-ready) formats.
+
+**Key Parameters:**
+- `gene.data`: Named vector of gene expression (e.g., `kegg_gene_list`), names = ENTREZ IDs, values = log2 fold changes
+- `pathway.id`: KEGG pathway ID (e.g., "hsa04130"), found in gseKEGG results; can be a vector
+- `species`: 3-letter KEGG organism code (e.g., "hsa"), must match gseKEGG analysis
+```{r pathview, eval=FALSE}
+library(pathview)
+
+# Produce the native KEGG plot (PNG)
+dme1 <- pathview(gene.data=kegg_gene_list, pathway.id="hsa04130", species = "hsa")
+
+# Produce a different plot (PDF) (not displayed here)
+dme2 <- pathview(gene.data=kegg_gene_list, pathway.id="hsa03060", species = "hsa", kegg.native = F)
+```
+<br>
+
+```{r pathview-2, eval=FALSE}
+knitr::include_graphics("hsa04130.pathview.png")
+```
+
+<div class="figure" style="text-align: center">
+<img src="images/hsa04130.pathview.png" alt="hsa04130.pathview" width="80%" />
+<p class="caption">**Figure 31:** KEGG pathway diagram for hsa04130</p>
+</div>
+
+
+# 🛞 Visualizing Genome-wide Expression Changes with Circos Plots
+
+Circos plots are powerful tools for visualizing genomic data in a circular layout, allowing us to represent complex genomic relationships and patterns effectively. In this section, we'll create a comprehensive Circos visualization that displays:
+
+1. Chromosome-wise distribution of differentially expressed genes
+2. Log2 fold changes mapped to their genomic locations
+3. Significant genes highlighted with their corresponding positions
+4. Potential genomic hotspots of transcriptional regulation
+
+The visualization will help us identify any potential chromosomal regions that are particularly responsive to hypoxic conditions and understand the genome-wide distribution of our differentially expressed genes.
+
+## Preparing Data for Circos Plot[@RN20]
+
+```{r prepare_circos_data, eval=FALSE}
+# Load required libraries
+library(biomaRt)
+
+#' Function to get human gene coordinates from Ensembl
+get_human_ensembl_coordinates <- function() {
+    # Connect to Ensembl
+    message("Connecting to Ensembl...")
+    ensembl <- useEnsembl(biomart = "genes")
+    
+    # Find and set human dataset
+    datasets <- listDatasets(ensembl)
+    human_datasets <- grep("human", datasets$description, ignore.case = TRUE)
+    
+    if (length(human_datasets) == 0) {
+        stop("No human dataset found in Ensembl")
+    }
+    
+    dataset <- datasets$dataset[human_datasets[1]]  # Use first human dataset
+    message(paste("Using dataset:", dataset))
+    
+    # Set dataset and get gene coordinates
+    ensembl <- useDataset(dataset = dataset, mart = ensembl)
+    
+    # Define attributes for gene coordinates
+    attributes <- c("ensembl_gene_id", "chromosome_name", 
+                   "start_position", "end_position")
+    
+    # Get coordinates for all genes
+    message("Retrieving gene coordinates...")
+    all.genes <- getBM(attributes = attributes, 
+                      values = list(ensembl_gene_id = c()), 
+                      mart = ensembl)
+    
+    # Rename column to match DESeq2 output
+    colnames(all.genes)[1] <- "ensembl_id"
+    
+    return(all.genes)
+}
+
+# Get gene coordinates
+gene_coords <- get_human_ensembl_coordinates()
+
+# Merge coordinates with DESeq2 results
+message("Merging coordinates with DESeq2 results...")
+merged_data <- merge(gene_coords, res_2, by = "ensembl_id", all.x = TRUE)
+
+# Format chromosome names
+merged_data$chromosome_name <- paste0("chr", merged_data$chromosome_name)
+
+# Save complete dataset
+output_dir <- "data"
+dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
+
+write.csv(merged_data, 
+          file.path(output_dir, "deseq.csv"), 
+          row.names = FALSE)
+
+# Create and save subset of interesting genes
+if (exists("genes_to_check")) {
+    merged_data_subset <- merged_data[merged_data$Gene.Name %in% genes_to_check, ]
+    write.csv(merged_data_subset, 
+              file.path(output_dir, "deseq_subset.csv"), 
+              row.names = FALSE)
+    message(paste("Saved subset of", nrow(merged_data_subset), "genes"))
+}
+```
+<br>
+
+## Creating the Circos Plot
+
+```{r create_circos_plot, fig.width=10, fig.height=10, eval=FALSE}
+# Load required packages
+library(circlize)
+library(dplyr)
+
+# Prepare data for Circos plot
+circos_data <- merged_data %>%
+  # Filter out non-standard chromosomes
+  filter(grepl("^chr[0-9XY]+$", chromosome_name)) %>%
+  # Sort by chromosome and position
+  arrange(chromosome_name, start_position) %>%
+  mutate(log2fc = ifelse(is.na(log2FoldChange), 0, log2FoldChange))
+
+# Initialize Circos plot with chromosomes
+circos.clear()
+message("Initializing Circos plot...")
+
+# Set up Circos plot parameters
+circos.par(
+    "track.height" = 0.1, 
+    "start.degree" = 90,
+    gap.degree = 2
+)
+
+# Create base chromosome ideogram
+circos.initializeWithIdeogram(
+    species = "hg19",
+    chromosome.index = paste0("chr", c(1:22, "X", "Y"))
+)
+
+# Add track for log2 fold changes
+circos.genomicTrack(
+    circos_data,
+    panel.fun = function(region, value, ...) {
+        circos.genomicPoints(
+            region,
+            value$log2fc,
+            pch = 16,
+            cex = 0.5,
+            col = ifelse(value$log2fc > 0, "red", "blue")
+        )
+    },
+    track.height = 0.2
+)
+
+# Add track for significant genes
+message("Adding significant genes track...")
+sig_genes <- circos_data %>% filter(padj < 0.05)
+if (nrow(sig_genes) > 0) {
+  # Prepare data for labels, ensuring correct column order
+  sig_genes_for_labels <- sig_genes %>%
+    dplyr::select(chromosome_name, start_position, end_position, Gene.name, log2fc)
+  
+  circos.genomicLabels(
+    sig_genes_for_labels,
+    labels.column = 4, # Gene.name column
+    side = "inside",
+    col = ifelse(sig_genes_for_labels$log2fc > 0, "red", "blue")
+  )
+}
+
+# Save plots
+pdf("figures/circos_plot.pdf", width = 10, height = 10)
+dev.off()
+```
+```{r, echo=FALSE, eval=FALSE}
+png("images/circos_plot.png", width = 800, height = 800)
+dev.off()
+
+```
+
+<div class="figure" style="text-align: center">
+<img src="images/Rplot.jpeg" alt="circos_plot" width="100%" />
+<p class="caption">**Figure 32:** Circos plot</p>
+</div>
+
+
+
+# 💻 Comprehensive Analysis Conclusions
+
+## Summary of Key Findings
+
+::: {.key-findings style="background-color: #e8f5e9; padding: 15px; border-radius: 5px; margin: 15px 0;"}
+**1. Cell Line-Specific Responses**
+- LNCaP cells show strong androgen-dependent responses
+- PC3 cells exhibit enhanced EMT and invasiveness signatures
+- Distinct metabolic adaptations in each cell line
+
+**2. Shared Hypoxia Response**
+- Common upregulation of glycolysis pathways
+- Coordinated angiogenic response
+- HIF-1α target gene activation
+
+**3. Metabolic Reprogramming**
+- Shift from oxidative phosphorylation to glycolysis
+- Cell-specific lipid metabolism adaptations
+- Differential nutrient utilization strategies
+:::
+
+
+
+## Biological Implications
+
+::: {.implications style="background-color: #e1f5fe; padding: 15px; border-radius: 5px; margin: 15px 0;"}
+**1. Cancer Progression**
+- Hypoxia drives metabolic adaptation
+- Enhanced survival mechanisms
+- Potential metastatic capabilities
+
+**2. Therapeutic Relevance**
+- Cell-type specific vulnerabilities
+- Common therapeutic targets
+- Resistance mechanisms
+
+**3. Clinical Applications**
+- Biomarker identification
+- Treatment stratification
+- Drug response prediction
+:::
+
+
+
+## Future Directions
+
+::: {.future-work style="background-color: #fff3e0; padding: 15px; border-radius: 5px; margin: 15px 0;"}
+**1. Additional Investigations**
+- Validation of key findings
+- Protein-level confirmation
+- Metabolomic profiling
+
+**2. Therapeutic Development**
+- Target validation studies
+- Drug combination strategies
+- Resistance mechanism studies
+
+**3. Clinical Translation**
+- Biomarker development
+- Patient stratification
+- Treatment optimization
+:::
+
+
+# ℹ️ Session Info
+
+```{r}
+sessionInfo()
+```
+
+
+# 📚 References
