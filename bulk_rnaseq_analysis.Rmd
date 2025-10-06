@@ -2426,7 +2426,7 @@ ggsave(filename = "images/DE_gene_heatmap.png", plot = p9, width = 16, height = 
 ```
 
 <div class="figure" style="text-align: center">
-<img src="images/DE_gene_heatmap.jpg" alt="DE_gene_heatmap" width="80%" />
+<img src="images/DE_gene_heatmap.png" alt="DE_gene_heatmap" width="80%" />
 <p class="caption">**Figure 9:** DE_gene_heatmap plot</p>
 </div>
 
@@ -3489,7 +3489,7 @@ dev.off()
 ```
 
 <div class="figure" style="text-align: center">
-<img src="images/Rplot.jpeg" alt="circos_plot" width="100%" />
+<img src="images/circos_plot-2.jpg" alt="circos_plot" width="100%" />
 <p class="caption">**Figure 32:** Circos plot</p>
 </div>
 
